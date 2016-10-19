@@ -59,6 +59,9 @@
 #include <CrySystem/Profilers/IStatoscope.h>
 #include <CrySystem/IStreamEngine.h>
 #include <Cry3DEngine/ITimeOfDay.h>
+#include <CryGame/IGameStartup.h>
+
+#include <CrySystem/IProjectManager.h>
 
 #include "Serialization/GameSerialize.h"
 
@@ -76,6 +79,7 @@
 #include "Inventory.h"
 
 #include "FlowSystem/FlowSystem.h"
+#include "FlowSystem/Modules/ModuleManager.h"
 #include "IVehicleSystem.h"
 #include "GameTokens/GameTokenSystem.h"
 #include "EffectSystem/EffectSystem.h"
@@ -179,6 +183,20 @@
 #include "LipSync/LipSync_TransitionQueue.h"
 #include "LipSync/LipSync_FacialInstance.h"
 
+#if defined(USE_SCHEMATYC_CORE)
+	#include "Schematyc/Schematyc_ICompiler.h"
+	#include "Schematyc/Schematyc_IFramework.h"
+	#include "Schematyc/Env/Schematyc_IEnvRegistry.h"
+	#include "Schematyc/Script/Schematyc_IScriptRegistry.h"
+	#if defined(USE_SCHEMATYC_BASE_ENV)
+		#include "Schematyc/BaseEnv_BaseEnv.h"
+	#endif
+#endif
+
+#ifdef _LIB
+extern "C" IGameStartup* CreateGameStartup();
+#endif //_LIB
+
 #define DEFAULT_BAN_TIMEOUT     (30.0f)
 
 #define PROFILE_CONSOLE_NO_SAVE (0)     // For console demo's which don't save their player profile
@@ -206,10 +224,6 @@ public:
 	{
 		switch (event)
 		{
-		case ESYSTEM_EVENT_RANDOM_SEED:
-			cry_random_seed(gEnv->bNoRandomSeed ? 0 : (uint32)wparam);
-			break;
-
 		case ESYSTEM_EVENT_LEVEL_POST_UNLOAD:
 			if (!gEnv->IsEditor())
 			{
@@ -226,13 +240,9 @@ public:
 			}
 		case ESYSTEM_EVENT_FAST_SHUTDOWN:
 			{
-				IForceFeedbackSystem* pForceFeedbackSystem = CCryAction::GetCryAction() ? CCryAction::GetCryAction()->GetIForceFeedbackSystem() : NULL;
-				if (pForceFeedbackSystem)
-				{
-					CryLogAlways("ActionGame - Shutting down all force feedback");
-					pForceFeedbackSystem->StopAllEffects();
-				}
+				CCryAction::GetCryAction()->ShutdownEngineFast();
 			}
+			break;
 		}
 	}
 };
@@ -298,6 +308,9 @@ CCryAction::CCryAction()
 	m_pGameplayAnalyst(0),
 	m_pGameRulesSystem(0),
 	m_pFlowSystem(0),
+#if defined(USE_SCHEMATYC_BASE_ENV)
+	m_pSchematycBaseEnv(0),
+#endif
 	m_pGameObjectSystem(0),
 	m_pScriptRMI(0),
 	m_pUIDraw(0),
@@ -336,6 +349,7 @@ CCryAction::CCryAction()
 	m_pEnableLoadingScreen(0),
 	m_pShowLanBrowserCVAR(0),
 	m_pDebugSignalTimers(0),
+	m_pAsyncLevelLoad(0),
 	m_pDebugRangeSignaling(0),
 	m_bShowLanBrowser(false),
 	m_isEditing(false),
@@ -363,7 +377,6 @@ CCryAction::CCryAction()
 	m_pCustomEventManager(0),
 	m_pPhysicsQueues(0),
 	m_PreUpdateTicks(0),
-	m_levelPrecachingDone(false),
 	m_pGameVolumesManager(NULL),
 	m_pNetMsgDispatcher(0)
 {
@@ -373,12 +386,6 @@ CCryAction::CCryAction()
 	m_editorLevelName[0] = 0;
 	m_editorLevelFolder[0] = 0;
 	cry_strcpy(m_gameGUID, "{00000000-0000-0000-0000-000000000000}");
-}
-
-//------------------------------------------------------------------------
-CCryAction::~CCryAction()
-{
-	Shutdown();
 }
 
 #if 0
@@ -484,7 +491,7 @@ void CCryAction::MapCmd(IConsoleCmdArgs* args)
 	LOADING_TIME_PROFILE_SECTION;
 	MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_Other, 0, "MapCmd");
 
-	uint32 flags = 0;
+	uint32 flags = eGSF_NonBlockingConnect;
 
 	// not available in the editor
 	if (gEnv->IsEditor())
@@ -673,8 +680,8 @@ void CCryAction::MapCmd(IConsoleCmdArgs* args)
 		paramCheck.AddParam("dedicated");
 		paramCheck.AddParam("record");
 		paramCheck.AddParam("server");
-		paramCheck.AddParam("nonblocking");
-		paramCheck.AddParam("nb");
+		paramCheck.AddParam("nonblocking"); //If this is set, map load and player connection become non-blocking operations.
+		paramCheck.AddParam("nb"); //This flag previously made initial server connection non-blocking. This is now always enabled.
 		paramCheck.AddParam("x");
 		//
 		for (int i = 2; i < args->GetArgCount(); i++)
@@ -714,7 +721,7 @@ void CCryAction::MapCmd(IConsoleCmdArgs* args)
 			}
 			else if (!strcmp(arg, "nb"))
 			{
-				flags |= eGSF_NonBlockingConnect;
+				//This is always on now - check is preserved for backwards compatibility
 			}
 			else if (!strcmp(arg, "x"))
 			{
@@ -737,6 +744,13 @@ void CCryAction::MapCmd(IConsoleCmdArgs* args)
 	{
 		flags |= eGSF_BlockingClientConnect | /*eGSF_LocalOnly | eGSF_NoQueries |*/ eGSF_BlockingMapLoad;
 		forceNewContext = true;
+	}
+
+	const ICVar* pAsyncLoad = gEnv->pConsole->GetCVar("g_asynclevelload");
+	const bool bAsyncLoad = pAsyncLoad && pAsyncLoad->GetIVal() > 0;
+	if (bAsyncLoad)
+	{
+		flags |= eGSF_NonBlockingConnect;
 	}
 
 	if (::gEnv->IsDedicated())
@@ -1071,7 +1085,9 @@ void CCryAction::SaveGameCmd(IConsoleCmdArgs* args)
 		}
 		else
 		{
-			GetCryAction()->SaveGame(gEnv->pGame->CreateSaveGameName().c_str(), true, false);
+			auto saveGameName = GetCryAction()->CreateSaveGameName();
+
+			GetCryAction()->SaveGame(saveGameName.c_str(), true, false);
 		}
 	}
 	else
@@ -1749,11 +1765,13 @@ static inline void InlineInitializationProcessing(const char* sDescription)
 }
 
 //------------------------------------------------------------------------
-bool CCryAction::Init(SSystemInitParams& startupParams)
+bool CCryAction::StartEngine(SSystemInitParams& startupParams)
 {
 	MEMSTAT_CONTEXT(EMemStatContextTypes::MSC_Other, 0, "CryAction Init");
 
 	m_pSystem = startupParams.pSystem;
+
+	startupParams.pGameFramework = this;
 
 	if (!startupParams.pSystem)
 	{
@@ -1771,6 +1789,7 @@ bool CCryAction::Init(SSystemInitParams& startupParams)
 		{
 			// initialize the system
 			m_pSystem = CreateSystemInterface(startupParams);
+			startupParams.pSystem = m_pSystem;
 		}
 
 		if (!m_pSystem)
@@ -1784,7 +1803,7 @@ bool CCryAction::Init(SSystemInitParams& startupParams)
 			startupParams.pSystem->ChangeUserPath(startupParams.szUserPath);
 	}
 
-	ModuleInitISystem(m_pSystem, "CryAction"); // Needed by GetISystem();
+	ModuleInitISystem(m_pSystem, "CryAction");  // Needed by GetISystem();
 
 	// here we have gEnv and m_pSystem
 	LOADING_TIME_PROFILE_SECTION_NAMED("CCryAction::Init() after system");
@@ -1905,7 +1924,6 @@ bool CCryAction::Init(SSystemInitParams& startupParams)
 		m_pGameObjectSystem->RegisterEvent(eGFE_OnBreakable2d, "OnBreakable2d");
 		m_pGameObjectSystem->RegisterEvent(eGFE_OnBecomeVisible, "OnBecomeVisible");
 		m_pGameObjectSystem->RegisterEvent(eGFE_PreShatter, "PreShatter");
-		m_pGameObjectSystem->RegisterEvent(eGFE_BecomeLocalPlayer, "BecomeLocalPlayer");
 		m_pGameObjectSystem->RegisterEvent(eGFE_DisablePhysics, "DisablePhysics");
 		m_pGameObjectSystem->RegisterEvent(eGFE_EnablePhysics, "EnablePhysics");
 		m_pGameObjectSystem->RegisterEvent(eGFE_ScriptEvent, "ScriptEvent");
@@ -1915,6 +1933,17 @@ bool CCryAction::Init(SSystemInitParams& startupParams)
 		m_pGameObjectSystem->RegisterEvent(eGFE_EnableBlendRagdoll, "EnableBlendToRagdoll");
 		m_pGameObjectSystem->RegisterEvent(eGFE_DisableBlendRagdoll, "DisableBlendToRagdoll");
 	}
+
+#if defined(USE_SCHEMATYC_CORE)
+	// Create Schematyc framework
+	if (Schematyc::CreateFramework(static_cast<IGameFramework*>(this)))
+	{
+	#if defined(USE_SCHEMATYC_BASE_ENV)
+		// Create base Schematyc environment
+		m_pSchematycBaseEnv = new SchematycBaseEnv::CBaseEnv();
+	#endif
+	}
+#endif
 
 	m_pAnimationGraphCvars = new CAnimationGraphCVars();
 	m_pMannequin = new CMannequinInterface();
@@ -2045,11 +2074,196 @@ bool CCryAction::Init(SSystemInitParams& startupParams)
 		m_pColorGradientManager = new CColorGradientManager();
 	}
 
-	InlineInitializationProcessing("CCryAction::Init End");
-	return true;
-}
-//------------------------------------------------------------------------
+	InitGame(startupParams);
 
+	if (startupParams.bExecuteCommandLine)
+		GetISystem()->ExecuteCommandLine();
+
+	gEnv->pConsole->ExecuteString("exec autoexec.cfg");
+
+	// game got initialized, time to finalize framework initialization
+	if (CompleteInit())
+	{
+		// run main game loop
+		InlineInitializationProcessing("CCryAction::Init End");
+
+		if (startupParams.bManualEngineLoop)
+		{
+			return true;
+		}
+		else
+		{
+			return (Run("") != 0);
+		}
+	}
+
+	return false;
+}
+
+bool CCryAction::InitGame(SSystemInitParams& startupParams)
+{
+	if (ICVar* pCVarGameDir = gEnv->pConsole->GetCVar("sys_dll_game"))
+	{
+		const char* gameDLLName = pCVarGameDir->GetString();
+		if (strlen(gameDLLName) == 0)
+			return false;
+
+		HMODULE hGameDll   = 0;
+
+#if !defined(_LIB)
+		hGameDll = CryLoadLibrary(gameDLLName);
+
+		if (!hGameDll)
+		{
+			CryWarning(VALIDATOR_MODULE_SYSTEM, VALIDATOR_WARNING, "Failed to load the Game DLL! %s", gameDLLName);
+			return false;
+		}
+
+		IGameStartup::TEntryFunction CreateGameStartup = (IGameStartup::TEntryFunction)CryGetProcAddress(hGameDll, "CreateGameStartup");
+		if (!CreateGameStartup)
+		{
+			CryWarning(VALIDATOR_MODULE_SYSTEM, VALIDATOR_WARNING, "Failed to find the GameStartup Interface in %s!", gameDLLName);
+			CryFreeLibrary(hGameDll);
+			return false;
+		}
+#endif
+
+		// create the game startup interface
+		IGameStartup* pGameStartup = CreateGameStartup();
+		if (!pGameStartup)
+		{
+			CryWarning(VALIDATOR_MODULE_SYSTEM, VALIDATOR_WARNING, "Failed to find the GameStartup Interface in %s!", gameDLLName);
+			CryFreeLibrary(hGameDll);
+			return false;
+		}
+
+		startupParams.pGameStartup = pGameStartup;
+		if (m_externalGameLibrary.pGame = pGameStartup->Init(startupParams))
+		{
+			m_externalGameLibrary.dllName = gameDLLName;
+			m_externalGameLibrary.dllHandle = hGameDll;
+			m_externalGameLibrary.pGameStartup = pGameStartup;
+		}
+	}
+
+	return m_externalGameLibrary.IsValid();
+}
+
+//------------------------------------------------------------------------
+int CCryAction::Run(const char* szAutoStartLevelName)
+{
+	if (szAutoStartLevelName[0])
+	{
+		//load savegame
+		if (CryStringUtils::stristr(szAutoStartLevelName, CRY_SAVEGAME_FILE_EXT) != 0)
+		{
+			CryFixedStringT<256> fileName(szAutoStartLevelName);
+			// NOTE! two step trimming is intended!
+			fileName.Trim(" ");  // first:  remove enclosing spaces (outside ")
+			fileName.Trim("\""); // second: remove potential enclosing "
+			gEnv->pGameFramework->LoadGame(fileName.c_str());
+		}
+		else  //start specified level
+		{
+			CryFixedStringT<256> mapCmd("map ");
+			mapCmd += szAutoStartLevelName;
+			gEnv->pConsole->ExecuteString(mapCmd.c_str());
+		}
+	}
+
+#if CRY_PLATFORM_WINDOWS
+	if (!(gEnv && gEnv->pSystem) || (!gEnv->IsEditor() && !gEnv->IsDedicated()))
+	{
+		::ShowCursor(FALSE);
+		if (GetISystem()->GetIHardwareMouse())
+			GetISystem()->GetIHardwareMouse()->DecrementCounter();
+	}
+#else
+	if (gEnv && gEnv->pHardwareMouse)
+		gEnv->pHardwareMouse->DecrementCounter();
+#endif
+
+#if defined(CRY_PLATFORM_DURANGO)
+	return 1;
+#endif
+
+	for (;;)
+	{
+		if (!Update(true, 0))
+		{
+			break;
+		}
+	}
+
+	return 0;
+}
+
+//------------------------------------------------------------------------
+int CCryAction::ManualFrameUpdate(bool haveFocus, unsigned int updateFlags)
+{
+	return Update(haveFocus, updateFlags);
+}
+
+//------------------------------------------------------------------------
+int CCryAction::Update(bool haveFocus, unsigned int updateFlags)
+{
+	// The frame profile system already creates an "overhead" profile label
+	// in StartFrame(). Hence we have to set the FRAMESTART before.
+	CRY_PROFILE_FRAMESTART("Main");
+
+#if defined(JOBMANAGER_SUPPORT_PROFILING)
+	gEnv->GetJobManager()->SetFrameStartTime(gEnv->pTimer->GetAsyncTime());
+#endif
+
+	if (gEnv->pConsole)
+	{
+#if CRY_PLATFORM_WINDOWS
+		if (gEnv && gEnv->pRenderer && gEnv->pRenderer->GetHWND())
+		{
+			bool focus = (::GetFocus() == gEnv->pRenderer->GetHWND());
+			static bool focused = focus;
+			if (focus != focused)
+			{
+				if (GetISystem()->GetISystemEventDispatcher())
+				{
+					GetISystem()->GetISystemEventDispatcher()->OnSystemEvent(ESYSTEM_EVENT_CHANGE_FOCUS, focus, 0);
+				}
+				focused = focus;
+			}
+		}
+#endif
+	}
+
+	int returnCode  = 1;
+	const bool bRun = PreUpdate(haveFocus, updateFlags);
+
+	if (auto* pGame = CCryAction::GetCryAction()->GetIGame())
+	{
+		returnCode = pGame->Update(haveFocus, updateFlags);
+	}
+
+	PostUpdate(haveFocus, updateFlags);
+
+/*
+	if (!m_fullScreenCVarSetup && gEnv->pConsole)
+	{
+		ICVar* pVar = gEnv->pConsole->GetCVar("r_Fullscreen");
+		if (pVar)
+		{
+			pVar->SetOnChangeCallback(FullScreenCVarChanged);
+			m_fullScreenCVarSetup = true;
+		}
+	}
+*/
+
+#if ENABLE_AUTO_TESTER
+	s_autoTesterSingleton.Update();
+#endif
+
+	return (bRun && returnCode > 0) ? 1 : 0;
+}
+
+//------------------------------------------------------------------------
 void CCryAction::InitForceFeedbackSystem()
 {
 	LOADING_TIME_PROFILE_SECTION;
@@ -2183,7 +2397,7 @@ bool CCryAction::CompleteInit()
 
 	gEnv->p3DEngine->GetMaterialManager()->GetDefaultLayersMaterial();
 
-	if (IGame* pGame = gEnv->pGame)
+	if (auto* pGame = CCryAction::GetCryAction()->GetIGame())
 	{
 		pGame->CompleteInit();
 	}
@@ -2235,6 +2449,31 @@ bool CCryAction::CompleteInit()
 		m_pRuntimeAreaManager = new CRuntimeAreaManager();
 	}
 
+	LoadSchematycFiles();
+
+#if defined(CRY_UNIT_TESTING)
+	if (CryUnitTest::IUnitTestManager* pTestManager = GetISystem()->GetITestSystem()->GetIUnitTestManager())
+	{
+#if defined(_LIB)
+		pTestManager->CreateTests(CryUnitTest::Test::m_pFirst, "StaticBinary");
+#endif
+
+		const ICmdLineArg* pSkipUnitTest = GetISystem()->GetICmdLine()->FindArg(eCLAT_Pre, "skip_unit_tests");
+		if (!pSkipUnitTest)
+		{
+			const ICmdLineArg* pUseUnitTestExcelReporter = GetISystem()->GetICmdLine()->FindArg(eCLAT_Pre, "use_unit_test_excel_reporter");
+			if (pUseUnitTestExcelReporter)
+			{
+				GetISystem()->GetITestSystem()->GetIUnitTestManager()->RunAllTests(CryUnitTest::ExcelReporter);
+			}
+			else
+			{
+				GetISystem()->GetITestSystem()->GetIUnitTestManager()->RunAllTests(CryUnitTest::MinimalReporter);
+			}
+		}
+	}
+#endif
+
 	InlineInitializationProcessing("CCryAction::CompleteInit End");
 	return true;
 }
@@ -2282,8 +2521,45 @@ void CCryAction::ReleaseScriptBinds()
 }
 
 //------------------------------------------------------------------------
-void CCryAction::Shutdown()
+bool CCryAction::ShutdownGame()
 {
+	// unload game dll if present
+	if (m_externalGameLibrary.IsValid())
+	{
+		CFlowGraphModuleManager* pFlowGraphModuleManager = m_pFlowSystem->GetModuleManager();
+		if (pFlowGraphModuleManager)
+		{
+			pFlowGraphModuleManager->ClearModules();
+		}
+
+		IMaterialEffects* pMaterialEffects = GetIMaterialEffects();
+		if (pMaterialEffects)
+		{
+			pMaterialEffects->Reset(true);
+		}
+
+		IFlashUI* pFlashUI = gEnv->pFlashUI;
+		if (pFlashUI)
+		{
+			pFlashUI->ClearUIActions();
+		}
+
+		m_externalGameLibrary.pGameStartup->Shutdown();
+		if (m_externalGameLibrary.dllHandle)
+		{
+			CryFreeLibrary(m_externalGameLibrary.dllHandle);
+		}
+		m_externalGameLibrary.Reset();
+	}
+
+	return true;
+}
+
+//------------------------------------------------------------------------
+void CCryAction::ShutdownEngine()
+{
+	ShutdownGame();
+
 	XMLCPB::ShutdownCompressorThread();
 
 	SAFE_DELETE(m_pAIDebugRenderer);
@@ -2302,10 +2578,6 @@ void CCryAction::Shutdown()
 
 	if (m_pGameplayAnalyst)
 		m_pGameplayRecorder->UnregisterListener(m_pGameplayAnalyst);
-
-	//NOTE: m_pGFListeners->erase got commented out in UnregisterListener
-	//	CRY_ASSERT(0 == m_pGFListeners->size());
-	SAFE_DELETE(m_pGFListeners);
 
 	if (gEnv)
 	{
@@ -2357,6 +2629,9 @@ void CCryAction::Shutdown()
 	SAFE_DELETE(m_pGameObjectSystem);
 	SAFE_DELETE(m_pMannequin);
 	SAFE_DELETE(m_pTimeDemoRecorder);
+#if defined(USE_SCHEMATYC_BASE_ENV)
+	SAFE_DELETE(m_pSchematycBaseEnv);
+#endif
 	SAFE_DELETE(m_pGameSerialize);
 	SAFE_DELETE(m_pPersistantDebug);
 	SAFE_DELETE(m_pPlayerProfileManager);
@@ -2407,6 +2682,10 @@ void CCryAction::Shutdown()
 		m_pSystem->SetIFlowSystem(nullptr);
 	}
 
+	//NOTE: m_pGFListeners->erase got commented out in UnregisterListener
+	//	CRY_ASSERT(0 == m_pGFListeners->size());
+	SAFE_DELETE(m_pGFListeners);
+
 	XMLCPB::CDebugUtils::Destroy();
 
 	if (m_pSystem)
@@ -2427,10 +2706,39 @@ void CCryAction::Shutdown()
 	SAFE_DELETE(m_pPhysicsQueues);
 
 	m_pThis = 0;
+	gEnv->pGameFramework = nullptr;
+}
+
+//------------------------------------------------------------------------
+void CCryAction::ShutdownEngineFast()
+{
+	IForceFeedbackSystem* pForceFeedbackSystem = GetIForceFeedbackSystem();
+	if (pForceFeedbackSystem)
+	{
+		CryLogAlways("ActionGame - Shutting down all force feedback");
+		pForceFeedbackSystem->StopAllEffects();
+	}
+
+	//Ensure that the load ticker is not currently running. It can perform tasks on the network systems while they're being shut down
+	StopNetworkStallTicker();
+
+	ShutdownGame();
 }
 
 //------------------------------------------------------------------------
 f32 g_fPrintLine = 0.0f;
+
+void CCryAction::PrePhysicsUpdate()
+{
+	if (auto* pGame = GetIGame())
+	{
+		pGame->PrePhysicsUpdate();  // required if PrePhysicsUpdate() is overriden in game
+	}
+
+#if defined(USE_SCHEMATYC_BASE_ENV)
+	m_pSchematycBaseEnv->PrePhysicsUpdate();
+#endif
+}
 
 bool CCryAction::PreUpdate(bool haveFocus, unsigned int updateFlags)
 {
@@ -2592,6 +2900,13 @@ bool CCryAction::PreUpdate(bool haveFocus, unsigned int updateFlags)
 		m_pColorGradientManager->UpdateForThisFrame(gEnv->pTimer->GetFrameTime());
 	}
 
+#if defined(USE_SCHEMATYC_BASE_ENV)
+	if (m_pSchematycBaseEnv)
+	{
+		m_pSchematycBaseEnv->Update();
+	}
+#endif
+
 	CRConServerListener::GetSingleton().Update();
 	CSimpleHttpServerListener::GetSingleton().Update();
 
@@ -2628,6 +2943,7 @@ void CCryAction::PostUpdate(bool haveFocus, unsigned int updateFlags)
 		return;
 	}
 
+	const bool bInLevelLoad = IsInLevelLoad();
 	if (updateFlags & ESYSUPDATE_EDITOR_AI_PHYSICS)
 	{
 		float delta = gEnv->pTimer->GetFrameTime();
@@ -2645,7 +2961,8 @@ void CCryAction::PostUpdate(bool haveFocus, unsigned int updateFlags)
 		gEnv->p3DEngine->PrepareOcclusion(m_pSystem->GetViewCamera());
 
 		// synchronize all animations so ensure that their computations have finished
-		gEnv->pCharacterManager->SyncAllAnimations();
+		if (!bInLevelLoad)
+			gEnv->pCharacterManager->SyncAllAnimations();
 
 		m_pSystem->Render();
 
@@ -2697,7 +3014,7 @@ void CCryAction::PostUpdate(bool haveFocus, unsigned int updateFlags)
 	}
 
 	// synchronize all animations so ensure that their computation have finished
-	if (gEnv->pCharacterManager)
+	if (gEnv->pCharacterManager && !bInLevelLoad)
 		gEnv->pCharacterManager->SyncAllAnimations();
 
 	//update view system before p3DEngine->PrepareOcclusion as it might change view camera
@@ -2729,7 +3046,8 @@ void CCryAction::PostUpdate(bool haveFocus, unsigned int updateFlags)
 	if (gEnv->pFlashUI)
 		gEnv->pFlashUI->Update(deltaUI);
 
-	m_pGameObjectSystem->PostUpdate(delta);
+	if (!bInLevelLoad)
+		m_pGameObjectSystem->PostUpdate(delta);
 
 	if (m_pSegmentedWorld)
 		m_pSegmentedWorld->PostUpdate();
@@ -2740,6 +3058,9 @@ void CCryAction::PostUpdate(bool haveFocus, unsigned int updateFlags)
 	CSignalTimer::ref().SetDebug(m_pDebugSignalTimers->GetIVal() == 1);
 	CSignalTimer::ref().Update(delta);
 
+#if !defined(_RELEASE) && !CRY_PLATFORM_DURANGO
+	m_pSystem->RenderPhysicsHelpers();
+#endif
 	m_pSystem->RenderEnd();
 
 	if (m_pGame)
@@ -2882,16 +3203,6 @@ bool CCryAction::IsGameStarted()
 	                false;
 
 	return bStarted;
-}
-
-bool CCryAction::IsLevelPrecachingDone() const
-{
-	return m_levelPrecachingDone || gEnv->IsEditor();
-}
-
-void CCryAction::SetLevelPrecachingDone(bool bValue)
-{
-	m_levelPrecachingDone = bValue;
 }
 
 bool CCryAction::StartGameContext(const SGameStartParams* pGameStartParams)
@@ -3200,6 +3511,9 @@ void CCryAction::InitEditor(IGameToEditorInterface* pGameToEditor)
 	{
 		pGameToEditor->SetUIEnums("LipSyncType", &gs_lipSyncExtensionNamesForExposureToEditor.front(), lipSyncCount);
 	}
+
+	const char* physicalizationTypes[] = { "None=0", "Static=1", "Rigid=2" };
+	pGameToEditor->SetUIEnums("Physicalize", physicalizationTypes, CRY_ARRAY_COUNT(physicalizationTypes));
 }
 
 //------------------------------------------------------------------------
@@ -3216,6 +3530,42 @@ void CCryAction::GetEditorLevel(char** levelName, char** levelFolder)
 	if (levelFolder) *levelFolder = &m_editorLevelFolder[0];
 }
 
+void CCryAction::LoadSchematycFiles()
+{
+#if defined(USE_SCHEMATYC_CORE)
+	// We do loading of Schematyc environments just once. Usually this is called
+	// in CryAction::CompleteInit() after the game has been initialized.
+	// If the game needs to use Schematyc during game initialization, this
+	// function can be called earlier.
+	static bool bLoadSchematycFiles = true;
+	if (bLoadSchematycFiles)
+	{
+		Schematyc::IFramework& schematycFramework = GetSchematycFramework();
+		if (gEnv->IsEditor())
+		{
+			schematycFramework.GetLogRecorder().Begin();
+		}
+
+		CryLogAlways("[Schematyc]: Loading files...");
+		CryLogAlways("[Schematyc]: Loading settings");
+		schematycFramework.GetEnvRegistry().LoadAllSettings();
+		CryLogAlways("[Schematyc]: Loading script files");
+		schematycFramework.GetScriptRegistry().Load();
+		CryLogAlways("[Schematyc]: Compiling script files");
+		schematycFramework.GetCompiler().CompileAll();
+		CryLogAlways("[Schematyc]: Loading complete");
+
+		schematycFramework.RefreshLogFileSettings();
+		if (gEnv->IsEditor())
+		{
+			schematycFramework.GetLogRecorder().End();
+		}
+
+		bLoadSchematycFiles = false;
+	}
+#endif
+}
+
 //------------------------------------------------------------------------
 const char* CCryAction::GetStartLevelSaveGameName()
 {
@@ -3223,11 +3573,23 @@ const char* CCryAction::GetStartLevelSaveGameName()
 #if !CRY_PLATFORM_DESKTOP
 	levelstart = CRY_SAVEGAME_FILENAME;
 #else
-	levelstart = (gEnv->pGame->GetIGameFramework()->GetLevelName());
-	if (const char* mappedName = gEnv->pGame->GetMappedLevelName(levelstart.c_str()))
-		levelstart = mappedName;
+	levelstart = (gEnv->pGameFramework->GetLevelName());
+
+	if (auto* pGame = CCryAction::GetCryAction()->GetIGame())
+	{
+		const char* szMappedName = pGame->GetMappedLevelName(levelstart.c_str());
+		if (szMappedName)
+		{
+			levelstart = szMappedName;
+		}
+	}
+
 	levelstart.append("_");
-	levelstart.append(gEnv->pGame->GetName());
+
+	if (auto* pGame = CCryAction::GetCryAction()->GetIGame())
+	{
+		levelstart.append(pGame->GetName());
+	}
 #endif
 	levelstart.append(CRY_SAVEGAME_FILE_EXT);
 	return levelstart.c_str();
@@ -3509,8 +3871,68 @@ ELoadGameResult CCryAction::LoadGame(const char* path, bool quick, bool ignoreDe
 }
 
 //------------------------------------------------------------------------
+IGameFramework::TSaveGameName CCryAction::CreateSaveGameName()
+{
+	//design wants to have different, more readable names for the savegames generated
+	int id = 0;
+
+	TSaveGameName saveGameName;
+#if CRY_PLATFORM_DURANGO
+	saveGameName = CRY_SAVEGAME_FILENAME;
+#else
+	//saves a running savegame id which is displayed with the savegame name
+	if (IPlayerProfileManager* m_pPlayerProfileManager = gEnv->pGameFramework->GetIPlayerProfileManager())
+	{
+		const char* user = m_pPlayerProfileManager->GetCurrentUser();
+		if (IPlayerProfile* pProfile = m_pPlayerProfileManager->GetCurrentProfile(user))
+		{
+			pProfile->GetAttribute("Singleplayer.SaveRunningID", id);
+			pProfile->SetAttribute("Singleplayer.SaveRunningID", id + 1);
+		}
+	}
+
+	saveGameName = CRY_SAVEGAME_FILENAME;
+	char buffer[16];
+	itoa(id, buffer, 10);
+	saveGameName.clear();
+	if (id < 10)
+		saveGameName += "0";
+	saveGameName += buffer;
+	saveGameName += "_";
+
+	const char* levelName = GetLevelName();
+
+	if (auto* pGame = m_externalGameLibrary.pGame)
+	{
+		const char* mappedName = pGame->GetMappedLevelName(levelName);
+		saveGameName += mappedName;
+	}
+
+	saveGameName += "_";
+	saveGameName += gEnv->pSystem->GetIProjectManager()->GetCurrentProjectName();
+	saveGameName += "_";
+	string timeString;
+
+	CTimeValue time = gEnv->pTimer->GetFrameStartTime() - m_levelStartTime;
+	timeString.Format("%d", int_round(time.GetSeconds()));
+
+	saveGameName += timeString;
+#endif
+	saveGameName += CRY_SAVEGAME_FILE_EXT;
+
+	return saveGameName;
+}
+
+//------------------------------------------------------------------------
 void CCryAction::OnEditorSetGameMode(int iMode)
 {
+	LOADING_TIME_PROFILE_SECTION;
+
+	if (m_externalGameLibrary.pGame && iMode < 2)
+	{
+		m_externalGameLibrary.pGame->EditorResetGame(iMode != 0 ? true : false);
+	}
+
 	if (iMode < 2)
 	{
 		/* AlexL: for now don't set time to 0.0
@@ -3614,6 +4036,8 @@ void CCryAction::InitCVars()
 
 	m_pDebugSignalTimers = pC->RegisterInt("ai_DebugSignalTimers", 0, VF_CHEAT, "Enable Signal Timers Debug Screen");
 	m_pDebugRangeSignaling = pC->RegisterInt("ai_DebugRangeSignaling", 0, VF_CHEAT, "Enable Range Signaling Debug Screen");
+
+	m_pAsyncLevelLoad = pC->RegisterInt("g_asynclevelload", 0, VF_CONST_CVAR, "Enable asynchronous level loading");
 
 	REGISTER_INT("cl_packetRate", 30, 0, "Packet rate on client");
 	REGISTER_INT("sv_packetRate", 30, 0, "Packet rate on server");
@@ -3829,7 +4253,7 @@ EntityId CCryAction::GetClientActorId() const
 			return pActor->GetEntityId();
 	}
 
-	return 0;
+	return LOCAL_PLAYER_ENTITY_ID;
 }
 
 IEntity* CCryAction::GetClientEntity() const
@@ -3847,7 +4271,7 @@ EntityId CCryAction::GetClientEntityId() const
 			return pChannel->GetPlayerId();
 	}
 
-	return 0;
+	return LOCAL_PLAYER_ENTITY_ID;
 }
 
 INetChannel* CCryAction::GetClientChannel() const
@@ -4069,6 +4493,11 @@ IVehicleSystem* CCryAction::GetIVehicleSystem()
 ISharedParamsManager* CCryAction::GetISharedParamsManager()
 {
 	return m_pSharedParamsManager;
+}
+
+IGame* CCryAction::GetIGame()
+{
+	return m_externalGameLibrary.IsValid() ? m_externalGameLibrary.pGame : nullptr;
 }
 
 IViewSystem* CCryAction::GetIViewSystem()
@@ -4434,7 +4863,7 @@ void CCryAction::SetGameSessionHandler(IGameSessionHandler* pSessionHandler)
 
 void CCryAction::ScheduleEndLevel(const char* nextLevel)
 {
-	if (!gEnv->pGame->GameEndLevel(nextLevel))
+	if (GetIGame() == nullptr || !GetIGame()->GameEndLevel(nextLevel))
 	{
 		ScheduleEndLevelNow(nextLevel);
 	}
@@ -4700,6 +5129,10 @@ void CCryAction::OnActionEvent(const SActionEvent& ev)
 		}
 		break;
 
+	case eAE_inGame:
+		m_levelStartTime = gEnv->pTimer->GetFrameStartTime();
+		break;
+
 	default:
 		break;
 	}
@@ -4870,7 +5303,7 @@ void CCryAction::MutePlayer(IConsoleCmdArgs* pArgs)
 void CCryAction::MutePlayerById(EntityId playerId)
 {
 #ifndef OLD_VOICE_SYSTEM_DEPRECATED
-	IActor* pRequestingActor = gEnv->pGame->GetIGameFramework()->GetClientActor();
+	IActor* pRequestingActor = gEnv->pGameFramework->GetClientActor();
 	if (pRequestingActor && pRequestingActor->IsPlayer())
 	{
 		IActor* pActor = GetCryAction()->GetIActorSystem()->GetActor(playerId);

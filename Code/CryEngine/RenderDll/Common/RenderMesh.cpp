@@ -27,6 +27,7 @@ DECLARE_JOB("CreateSubsetRenderMesh", TCreateSubsetRenderMesh, SMeshSubSetIndice
 #define RENDERMESH_BUFFER_ENABLE_DIRECT_ACCESS 0
 #endif
 
+//////////////////////////////////////////////////////////////////////////////////////
 namespace 
 { 
 	inline uint32 GetCurrentRenderFrameID(const SRenderingPassInfo& passInfo)
@@ -1284,8 +1285,6 @@ size_t CRenderMesh::SetMesh_Int(CMesh &mesh, int nSecColorsSetOffset, uint32 fla
     // Cross link render chunk with render element.
     pRenderChunk->pRE = pRenderElement;
     AssignChunk(pRenderChunk, pRenderElement);
-    if (subset.nNumVerts <= 500 && !mesh.m_pBoneMapping && !(flags & FSM_NO_TANGENTS))
-      pRenderElement->mfUpdateFlags(FCEF_MERGABLE);
 
 		if (mesh.m_pBoneMapping)
 			pRenderElement->mfUpdateFlags(FCEF_SKINNED);
@@ -3639,7 +3638,6 @@ static void BlendWeights(DualQuat& dq, Array<const DualQuat> aBoneLocs, const Jo
 struct PosNormData
 {
 	strided_pointer<Vec3> aPos;
-	strided_pointer<Vec3> aNorm;
 	strided_pointer<SVF_P3S_N4B_C4B_T2S> aVert;
 	strided_pointer<SPipQTangents> aQTan;
 	strided_pointer<SPipTangents> aTan2;
@@ -3650,14 +3648,12 @@ struct PosNormData
 		ran.vPos = aPos[nV];
 
 		// Normal
-		if (aNorm.data)
-			ran.vNorm = aNorm[nV];
-		else if (aVert.data)
-			ran.vNorm = aVert[nV].normal.GetN();
+		if (aQTan.data)
+			ran.vNorm = aQTan[nV].GetN();
 		else if (aTan2.data)
 			ran.vNorm = aTan2[nV].GetN();
-		else if (aQTan.data)
-			ran.vNorm = aQTan[nV].GetN();
+		else if (aVert.data)
+			ran.vNorm = aVert[nV].normal.GetN();
 	}
 };
 
@@ -3769,12 +3765,9 @@ void CRenderMesh::GetRandomPos(PosNorm& ran, CRndGen& seed, EGeomForm eForm, SSk
 	if (vdata.aPos.data = (Vec3*)GetPosPtr(vdata.aPos.iStride, FSL_READ))
 	{
 		// Check possible sources for normals.
-#if ENABLE_NORMALSTREAM_SUPPORT
-		if (!GetStridedArray(vdata.aNorm, VSF_NORMALS))
-#endif
-			if (_GetVertexFormat() != eVF_P3S_N4B_C4B_T2S || !GetStridedArray(vdata.aVert, VSF_GENERAL))
-				if (!GetStridedArray(vdata.aTan2, VSF_TANGENTS))
-					GetStridedArray(vdata.aQTan, VSF_QTANGENTS);
+		if (_GetVertexFormat() != eVF_P3S_N4B_C4B_T2S || !GetStridedArray(vdata.aVert, VSF_GENERAL))
+			if (!GetStridedArray(vdata.aQTan, VSF_QTANGENTS))
+				GetStridedArray(vdata.aTan2, VSF_TANGENTS);
 
 		vtx_idx* pInds = GetIndexPtr(FSL_READ);
 
@@ -5260,4 +5253,41 @@ void SMeshSubSetIndicesJobEntry::CreateSubSetRenderMesh()
 		}
 		m_pIndexRM = pIndexMesh;
 	}
+}
+
+//////////////////////////////////////////////////////////////////////////
+//#TODO: Must be refactored to new pipeline!!!
+void CRenderMesh::DrawImmediately()
+{
+	CD3D9Renderer* rd = gcpRendD3D;
+
+	HRESULT hr = rd->FX_SetVertexDeclaration(0, _GetVertexFormat());
+
+	if (FAILED(hr))
+	{
+		assert(!"CRenderMesh::DrawImmediately failed");
+		return;
+	}
+
+	// set vertex and index buffer
+	CheckUpdate(_GetVertexFormat(), 0);
+
+	size_t vbOffset(0);
+	size_t ibOffset(0);
+	D3DVertexBuffer* pVB = rd->m_DevBufMan.GetD3DVB(_GetVBStream(VSF_GENERAL), &vbOffset);
+	D3DIndexBuffer* pIB = rd->m_DevBufMan.GetD3DIB(_GetIBStream(), &ibOffset);
+	assert(pVB);
+	assert(pIB);
+
+	if (!pVB || !pIB)
+	{
+		assert(!"CRenderMesh::DrawImmediately failed");
+		return;
+	}
+
+	rd->FX_SetVStream(0, pVB, vbOffset, GetStreamStride(VSF_GENERAL));
+	rd->FX_SetIStream(pIB, ibOffset, (sizeof(vtx_idx) == 2 ? Index16 : Index32));
+
+	// draw indexed mesh
+	rd->FX_DrawIndexedPrimitive(eptTriangleList, 0, 0, _GetNumVerts(), 0, _GetNumInds());
 }

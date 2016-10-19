@@ -108,13 +108,16 @@ class CSegmentedWorld;
 
 class CNetMessageDistpatcher;
 
+#if defined(USE_SCHEMATYC_BASE_ENV)
+namespace SchematycBaseEnv { class CBaseEnv; }
+#endif
+
 class CCryAction :
 	public IGameFramework
 {
 
 public:
 	CCryAction();
-	virtual ~CCryAction();
 
 	// IGameFramework
 	void                                  ClearTimers();
@@ -130,12 +133,13 @@ public:
 	virtual void                          RegisterFactory(const char* name, ISaveGame*(*func)(), bool);
 	virtual void                          RegisterFactory(const char* name, ILoadGame*(*func)(), bool);
 
-	virtual bool                          Init(SSystemInitParams& startupParams);
+	virtual bool                          StartEngine(SSystemInitParams& startupParams);
 	virtual void                          InitGameType(bool multiplayer, bool fromInit);
 	virtual bool                          CompleteInit();
-	virtual void                          Shutdown();
-	virtual bool                          PreUpdate(bool haveFocus, unsigned int updateFlags);
-	virtual void                          PostUpdate(bool haveFocus, unsigned int updateFlags);
+	virtual void                          ShutdownEngine();
+	virtual void                          ShutdownEngineFast();
+	virtual void                          PrePhysicsUpdate() /*override*/;
+	virtual int                           ManualFrameUpdate(bool haveFocus, unsigned int updateFlags);
 	virtual void                          Reset(bool clients);
 	virtual void                          GetMemoryUsage(ICrySizer* pSizer) const;
 
@@ -148,9 +152,6 @@ public:
 	virtual void                          GetAbsLevelPath(char* pPathBuffer, uint32 pathBufferSize);
 	virtual bool                          IsInTimeDemo();        // Check if time demo is in progress (either playing or recording);
 	virtual bool                          IsTimeDemoRecording(); // Check if time demo is recording;
-
-	virtual bool                          IsLevelPrecachingDone() const;
-	virtual void                          SetLevelPrecachingDone(bool bValue);
 
 	virtual ISystem*                      GetISystem()           { return m_pSystem; };
 	virtual ILanQueryListener*            GetILanQueryListener() { return m_pLanQueryListener; }
@@ -204,6 +205,8 @@ public:
 	virtual void                          SetEditorLevel(const char* levelName, const char* levelFolder);
 	virtual void                          GetEditorLevel(char** levelName, char** levelFolder);
 
+	virtual void                          LoadSchematycFiles() /*override*/;
+
 	virtual void                          BeginLanQuery();
 	virtual void                          EndCurrentQuery();
 
@@ -227,6 +230,8 @@ public:
 
 	virtual bool                          SaveGame(const char* path, bool bQuick = false, bool bForceImmediate = false, ESaveGameReason reason = eSGR_QuickSave, bool ignoreDelay = false, const char* checkpointName = NULL);
 	virtual ELoadGameResult               LoadGame(const char* path, bool quick = false, bool ignoreDelay = false);
+	virtual TSaveGameName                 CreateSaveGameName();
+
 	virtual void                          ScheduleEndLevel(const char* nextLevel = "");
 	virtual void                          ScheduleEndLevelNow(const char* nextLevel);
 
@@ -266,6 +271,9 @@ public:
 	virtual bool                  ShouldMigrateNub(CrySessionHandle sessionHandle);
 
 	virtual ISharedParamsManager* GetISharedParamsManager();
+
+	virtual IGame* GetIGame();
+
 	virtual float                 GetLoadSaveDelay() const { return m_lastSaveLoad; }
 
 	virtual IGameVolumes*         GetIGameVolumesManager() const;
@@ -361,9 +369,19 @@ public:
 	void                    StopNetworkStallTicker();
 	void                    GoToSegment(int x, int y);
 
+	bool                    PreUpdate(bool haveFocus, unsigned int updateFlags);
+	int                     Update(bool haveFocus, unsigned int updateFlags);
+	void                    PostUpdate(bool haveFocus, unsigned int updateFlags);
+
 private:
 	void InitScriptBinds();
 	void ReleaseScriptBinds();
+
+	bool InitGame(SSystemInitParams& startupParams);
+	bool ShutdownGame();
+
+	int  Run(const char* szAutoStartLevelName);
+
 	void InitForceFeedbackSystem();
 	void InitGameVolumesManager();
 
@@ -466,8 +484,6 @@ private:
 	bool                          m_paused;
 	bool                          m_forcedpause;
 
-	bool                          m_levelPrecachingDone;
-
 	static CCryAction*            m_pThis;
 
 	ISystem*                      m_pSystem;
@@ -495,6 +511,9 @@ private:
 	CGameplayRecorder*            m_pGameplayRecorder;
 	CGameRulesSystem*             m_pGameRulesSystem;
 	CFlowSystem*                  m_pFlowSystem;
+#if defined(USE_SCHEMATYC_BASE_ENV)
+	SchematycBaseEnv::CBaseEnv*   m_pSchematycBaseEnv;
+#endif
 	CGameObjectSystem*            m_pGameObjectSystem;
 	CUIDraw*                      m_pUIDraw;
 	CScriptRMI*                   m_pScriptRMI;
@@ -579,11 +598,12 @@ private:
 	TFrameworkExtensions m_frameworkExtensions;
 
 	// console variables
-	ICVar* m_pEnableLoadingScreen;
-	ICVar* m_pCheats;
-	ICVar* m_pShowLanBrowserCVAR;
-	ICVar* m_pDebugSignalTimers;
-	ICVar* m_pDebugRangeSignaling;
+	ICVar *m_pEnableLoadingScreen;
+	ICVar *m_pCheats;
+	ICVar *m_pShowLanBrowserCVAR;
+	ICVar *m_pDebugSignalTimers;
+  ICVar *m_pDebugRangeSignaling;
+	ICVar *m_pAsyncLevelLoad;
 
 	bool   m_bShowLanBrowser;
 	//
@@ -600,6 +620,18 @@ private:
 	ESaveGameMethod m_delayedSaveGameMethod;     // 0 -> no save, 1=quick save, 2=save, not quick
 	ESaveGameReason m_delayedSaveGameReason;
 	int             m_delayedSaveCountDown;
+
+	struct SExternalGameLibrary
+	{
+		string dllName;
+		HMODULE dllHandle;
+		IGameStartup* pGameStartup;
+		IGame* pGame;
+
+		SExternalGameLibrary() : dllName(""), dllHandle(0), pGameStartup(nullptr), pGame(nullptr) {}
+		bool IsValid() const { return (pGameStartup != nullptr && pGame != nullptr); }
+		void Reset() { dllName = ""; dllHandle = 0; pGameStartup = nullptr; pGame = nullptr; }
+	};
 
 	struct SLocalAllocs
 	{
@@ -649,6 +681,9 @@ private:
 	uint32                  m_PreUpdateTicks;
 
 	CNetMessageDistpatcher* m_pNetMsgDispatcher;
+	SExternalGameLibrary    m_externalGameLibrary;
+
+	CTimeValue              m_levelStartTime;
 };
 
 #endif //__CRYACTION_H__

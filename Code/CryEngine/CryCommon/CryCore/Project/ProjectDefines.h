@@ -13,11 +13,9 @@
 #define NO_LIVECREATE
 
 // [VR]
-// Optional HMD SDK integrations
-#if defined(DEDICATED_SERVER)
-	#undef INCLUDE_OCULUS_SDK
-	#undef INCLUDE_OPENVR_SDK
-	#undef INCLUDE_OSVR_SDK
+// Optional VR IHmdRenderer integration, note that HMD SDKs are implemented separately in plug-ins.
+#if !defined(DEDICATED_SERVER) && defined(CRY_PLATFORM_WINDOWS)
+	#define INCLUDE_VR_RENDERING
 #endif
 
 // Scaleform base configuration
@@ -310,7 +308,7 @@ extern void SliceAndSleep(const char* pFunc, int line);
 //------------------------------------------------------
 // Modules   : Renderer, Engine
 // Platform  : DX11
-#if CRY_PLATFORM_WINDOWS || CRY_PLATFORM_DURANGO /*|| CRY_PLATFORM_ORBIS*/
+#if CRY_PLATFORM_WINDOWS || CRY_PLATFORM_DURANGO || CRY_PLATFORM_ORBIS
 	#define FEATURE_SVO_GI
 	#if CRY_PLATFORM_WINDOWS
 		#define FEATURE_SVO_GI_ALLOW_HQ

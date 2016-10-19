@@ -374,20 +374,23 @@ add_sources("CryRenderer_dx_orbis_uber_1.cpp"
 		"DXOrbis/Layer0/CCryDXOrbis_Orbis.hpp"
 )
 
-# -- opengl_loader_egl.waf_files --
-sources_platform(ANDROID)
-add_sources("NoUberFile"
-	PROJECTS CryRenderOpenGL
-	SOURCE_GROUP "DXGL\\\\Specification"
-		"DXGL/Specification/glad_egl.c"
-		"DXGL/Specification/glad_egl.h"
-)
-
 # -- GNM/GnmShaderCompiler.waf_files --
 sources_platform(ALL)
 add_sources("NoUberFile"
 	PROJECTS GnmShaderCompiler
 	SOURCE_GROUP "GnmShaderCompiler"
+		"GNM/Compiler/HlslParser.h"
+		"GNM/Compiler/HlslParser.inl"
+		"GNM/Compiler/HlslParser.cpp"
+		"GNM/Compiler/HlslParser.Tables.cpp"
+		"GNM/Compiler/HlslParser.BaseGrammar.cpp"
+		"GNM/Compiler/HlslParser.OpGrammar.cpp"
+		"GNM/Compiler/HlslParser.StatGrammar.cpp"
+		"GNM/Compiler/HlslParser.TypeGrammar.cpp"
+		"GNM/Compiler/HlslParser.VarGrammar.cpp"
+		"GNM/Compiler/PsslGenerator.h"
+		"GNM/Compiler/PsslGenerator.cpp"
+		"GNM/GnmShaderCompiler.hpp"
 		"GNM/GnmShaderCompiler.cpp"
 )
 
@@ -504,7 +507,9 @@ add_sources("NoUberFile"
 		"GNM/GnmResourceLookup.hpp"
 		"GNM/GnmResourceSet.hpp"
 		"GNM/GnmResourceSet.cpp"
+		"GNM/GnmScratch.hpp"
 		"GNM/GnmShader.hpp"
+		"GNM/GnmShaderCompiler.hpp"
 		"GNM/GnmShaderLoader.cpp"
 		"GNM/GnmShaderRuntime.cpp"
 		"GNM/GnmShaderTools.hpp"
@@ -514,6 +519,15 @@ add_sources("NoUberFile"
 		"DeviceManager/GNM/DeviceManager_GNM.inl"
 		"DeviceManager/GNM/DeviceObjects_GNM.inl"
 		"DeviceManager/GNM/DeviceObjects_GNM.cpp"
+)
+
+# -- opengl_loader_egl.waf_files --
+sources_platform(ANDROID)
+add_sources("NoUberFile"
+	PROJECTS CryRenderOpenGL
+	SOURCE_GROUP "DXGL\\\\Specification"
+		"DXGL/Specification/glad_egl.c"
+		"DXGL/Specification/glad_egl.h"
 )
 
 # -- mesh_baker.waf_files --
@@ -609,12 +623,19 @@ add_sources("CryRenderer_render_elements_uber_1.cpp"
 	SOURCE_GROUP "Common\\\\RendElements"
 		"../Common/RendElements/CREParticle.cpp"
 		"../Common/RendElements/CREPostProcess.cpp"
-		"../Common/RendElements/CREPrismObject.cpp"
 		"../Common/RendElements/CRESky.cpp"
 		"../Common/RendElements/CREVolumeObject.cpp"
 		"../Common/RendElements/CREWaterOcean.cpp"
 		"../Common/RendElements/CREWaterVolume.cpp"
 		"../Common/RendElements/RendElement.cpp"
+		"../Common/RendElements/CRELensOptics.h"
+		"../Common/RendElements/CREBeam.h"
+		"../Common/RendElements/CREClientPoly.h"
+		"../Common/RendElements/CRECloud.h"
+		"../Common/RendElements/CREDeferredShading.h"
+		"../Common/RendElements/CREHDRProcess.h"
+		"../Common/RendElements/Stars.h"
+		"../Common/RendElements/CREMeshImpl.h"
 	SOURCE_GROUP "Common\\\\RendElements\\\\LensOptics"
 		"../Common/RendElements/CameraOrbs.cpp"
 		"../Common/RendElements/AbstractMeshElement.cpp"
@@ -655,15 +676,6 @@ add_sources("CryRenderer_render_elements_uber_1.cpp"
 		"../Common/RendElements/Utils/PolygonMath2D.cpp"
 		"../Common/RendElements/Utils/PolygonMath2D.h"
 		"../Common/RendElements/Utils/SpatialHashGrid.h"
-	SOURCE_GROUP "Common\\\\RendElements_h"
-		"../Common/RendElements/CRELensOptics.h"
-		"../Common/RendElements/CREBeam.h"
-		"../Common/RendElements/CREClientPoly.h"
-		"../Common/RendElements/CRECloud.h"
-		"../Common/RendElements/CREDeferredShading.h"
-		"../Common/RendElements/CREHDRProcess.h"
-		"../Common/RendElements/Stars.h"
-		"../Common/RendElements/CREMeshImpl.h"
 )
 
 add_sources("CryRenderer_textures_uber.cpp"
@@ -694,7 +706,6 @@ add_sources("CryRenderer_textures_uber.cpp"
 		"../Common/Textures/Image/DDSImage.cpp"
 		"../Common/Textures/Image/JpgImage.cpp"
 		"../Common/Textures/Image/TgaImage.cpp"
-	SOURCE_GROUP "Common\\\\Textures\\\\Image\\\\Image_h"
 		"../Common/Textures/Image/CImage.h"
 		"../Common/Textures/Image/DDSImage.h"
 )
@@ -730,13 +741,9 @@ add_sources("CryRenderer_uber_0.cpp"
 
 add_sources("CryRenderer_uber_1.cpp"
 	PROJECTS CryRenderGNM CryRenderD3D11 CryRenderD3D12 CryRenderOpenGL
-	SOURCE_GROUP "Header Files"
-		"D3DVolumetricFog.h"
-		"D3DVolumetricClouds.h"
 	SOURCE_GROUP "Source Files"
 		"D3DREImposter.cpp"
 		"D3DRenderAuxGeom.cpp"
-		"D3DRenderRE.cpp"
 		"D3DRenderThread.cpp"
 		"D3DRendPipeline.cpp"
 		"D3DRendPipeline_Jobs.cpp"
@@ -749,8 +756,6 @@ add_sources("CryRenderer_uber_1.cpp"
 		"D3DTexturesStreaming.cpp"
 		"D3DTextureStreamPool.cpp"
 		"D3DTiledShading.cpp"
-		"D3DVolumetricFog.cpp"
-		"D3DVolumetricClouds.cpp"
 		"CompiledRenderObject.cpp"
 	SOURCE_GROUP "Source Files\\\\Benchmark Customization"
 		"BenchmarkCustom/BenchmarkRendererSensor.h"
@@ -860,7 +865,6 @@ add_sources("CryRenderer_uber_3.cpp"
 		"../Scaleform/Scaleform.cpp"
 		"../Scaleform/ScaleformRender.cpp"
 		"../Scaleform/ScaleformPlayback.cpp"
-	SOURCE_GROUP "Scaleform_h"
 		"../Scaleform/ScaleformRender.h"
 		"../Scaleform/ScaleformPlayback.h"
 )
@@ -949,6 +953,8 @@ add_sources("CryRenderer_uber_6.cpp"
 		"GraphicsPipeline/DepthOfField.cpp"
 		"GraphicsPipeline/Fog.h"
 		"GraphicsPipeline/Fog.cpp"
+		"GraphicsPipeline/LensOptics.h"
+		"GraphicsPipeline/LensOptics.cpp"
 		"GraphicsPipeline/MotionBlur.h"
 		"GraphicsPipeline/MotionBlur.cpp"
 		"GraphicsPipeline/HeightMapAO.h"
@@ -983,6 +989,8 @@ add_sources("CryRenderer_uber_6.cpp"
 		"GraphicsPipeline/VolumetricClouds.cpp"
 		"GraphicsPipeline/VolumetricFog.h"
 		"GraphicsPipeline/VolumetricFog.cpp"
+		"GraphicsPipeline/Water.h"
+		"GraphicsPipeline/Water.cpp"
 		"GraphicsPipeline/WaterRipples.h"
 		"GraphicsPipeline/WaterRipples.cpp"
 	SOURCE_GROUP "GraphicsPipeline\\\\Common"
@@ -1014,11 +1022,9 @@ add_sources("NoUberFile"
 end_sources()
 #END-FILE-LIST
 
-if (RENDERER_DX11)
-	CryEngineModule(CryRenderD3D11 PCH "../StdAfx.cpp" SOLUTION_FOLDER "CryEngine")
-	
-	set(gnm_compiler_version \"ORBIS/V029\")
-	set(extra_defines -DCRY_GNM_SHADER_COMPILER_VERSION=${gnm_compiler_version})
+set(gnm_compiler_version "ORBIS/V031")
+
+set(extra_defines -DCRY_GNM_SHADER_COMPILER_VERSION="${gnm_compiler_version}")
 	if (NOT EXISTS ${SDK_DIR}/NVAPI)
 		message(STATUS "NVAPI SDK not found, excluding from the build.")
 		list(APPEND extra_defines -DEXCLUDE_NV_API)
@@ -1028,6 +1034,9 @@ if (RENDERER_DX11)
 		message(STATUS "AMD AGS SDK not found, excluding from the build.")
 		list(APPEND extra_defines -DEXCLUDE_AMD_API)
 	endif()
+
+if (RENDERER_DX11)
+	CryEngineModule(CryRenderD3D11 PCH "../StdAfx.cpp" SOLUTION_FOLDER "CryEngine")
 	
 	target_include_directories(${THIS_PROJECT} PRIVATE .. ${SDK_DIR}/squish-ccr)
 	target_compile_definitions(${THIS_PROJECT} PRIVATE -DDO_RENDERSTATS -D_RENDERER ${extra_defines})
@@ -1036,16 +1045,13 @@ if (RENDERER_DX11)
 	if (WIN32 OR WIN64)
 		set_target_properties(${THIS_PROJECT} PROPERTIES LINK_FLAGS /NODEFAULTLIB:libcmt.lib)
 		target_link_libraries(${THIS_PROJECT} PRIVATE dxguid d3d11 d3d10 d3dcompiler Ole32 Gdi32 wininet Shell32)
-		if(MSVC_VERSION EQUAL 1900)
-			target_link_libraries(${THIS_PROJECT} PRIVATE oculus)
-		endif()
 	elseif(DURANGO)
 		target_link_libraries(${THIS_PROJECT} PRIVATE ws2_32 SmartGlassInterop d3dcompiler dxguid xg_x uuid kernelx)
 	elseif(ORBIS)
 		target_include_directories(${THIS_PROJECT} PRIVATE ../../.. )
 		target_compile_definitions(${THIS_PROJECT} PRIVATE -DCRY_USE_GNM)
 		target_compile_options(${THIS_PROJECT} PRIVATE $<$<CONFIG:Release>:-flto>)
-		target_link_libraries(${THIS_PROJECT} PRIVATE SceSystemService_stub_weak SceGnmDriver_stub_weak $<$<NOT:$<CONFIG:Release>>:SceGnm SceGnmx>$<$<CONFIG:Release>:SceGnm_lto SceGnmx_lto>)
+		target_link_libraries(${THIS_PROJECT} PRIVATE SceSystemService_stub_weak SceGnmDriver_stub_weak $<$<NOT:$<CONFIG:Release>>:SceGnm> $<$<NOT:$<CONFIG:Release>>:SceGnmx> $<$<CONFIG:Release>:SceGnm_lto> $<$<CONFIG:Release>:SceGnmx_lto>)
 	endif()
 else()
 	CryFileContainer(CryRenderD3D11 SOLUTION_FOLDER "CryEngine")
@@ -1061,9 +1067,6 @@ if (RENDERER_OPENGL)
 		target_include_directories(${THIS_PROJECT} PRIVATE ${SDK_DIR}/squish-ccr ${CMAKE_SOURCE_DIR}/Code/Tools/LibTIFF ${CMAKE_SOURCE_DIR}/Code/Tools/HLSLCrossCompiler/include)
 		set_target_properties(${THIS_PROJECT} PROPERTIES LINK_FLAGS /NODEFAULTLIB:libcmt.lib)
 		target_link_libraries(${THIS_PROJECT} PRIVATE opengl32 winmm Ole32 Gdi32 wininet Shell32)
-		if(MSVC_VERSION EQUAL 1900)
-			target_link_libraries(${THIS_PROJECT} PRIVATE oculus)
-		endif()
 		if(WIN64)
 			find_library(LIBHLSLCC libHLSLcc PATHS "${CMAKE_SOURCE_DIR}/Code/Tools/HLSLCrossCompiler/lib/win64")
 		elseif(WIN32)
@@ -1100,7 +1103,7 @@ if (RENDERER_DX12)
 	target_compile_definitions(${THIS_PROJECT} PRIVATE -DDIRECT3D10 -DCRY_USE_DX12 -DXRENDERD3D10_EXPORTS -DDO_RENDERSTATS -D_RENDERER ${extra_defines})
 	target_include_directories(${THIS_PROJECT} PRIVATE .. ${SDK_DIR} ${SDK_DIR}/squish-ccr ${CMAKE_SOURCE_DIR}/Code/Tools/LibTIFF ${CMAKE_SOURCE_DIR}/Code/CryEngine/RenderDll/XRenderD3D9/DX12/Includes)
 	set_target_properties(${THIS_PROJECT} PROPERTIES LINK_FLAGS /NODEFAULTLIB:libcmt.lib)
-	target_link_libraries(${THIS_PROJECT} PRIVATE lzma lzss lz4 zlib dxguid d3d12 dxgi d3dcompiler Ole32 Gdi32 wininet Shell32 oculus)
+	target_link_libraries(${THIS_PROJECT} PRIVATE lzma lzss lz4 zlib dxguid d3d12 dxgi d3dcompiler Ole32 Gdi32 wininet Shell32)
 else()
 	CryFileContainer(CryRenderD3D12 SOLUTION_FOLDER "CryEngine")
 endif()
@@ -1111,7 +1114,7 @@ if (EXISTS ${SDK_DIR}/Orbis AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/GNM)
 		target_include_directories(${THIS_PROJECT} PRIVATE ..)
 		target_compile_definitions(${THIS_PROJECT} PRIVATE -D_RENDERER -DDO_RENDERSTATS -DCRY_USE_GNM -DCRY_USE_GNM_RENDERER ${extra_defines})
 		target_compile_options(${THIS_PROJECT} PRIVATE $<$<CONFIG:Release>:-flto>)
-		target_link_libraries(${THIS_PROJECT} PRIVATE lzma lzss lz4 zlib SceSystemService_stub_weak SceGnmDriver_stub_weak $<$<NOT:$<CONFIG:Release>>:SceGnm SceGnmx SceDbg_stub_weak>$<$<CONFIG:Release>:SceGnm_lto SceGnmx_lto>)
+		target_link_libraries(${THIS_PROJECT} PRIVATE lzma lzss lz4 zlib SceSystemService_stub_weak SceGnmDriver_stub_weak $<$<NOT:$<CONFIG:Release>>:SceGnm> $<$<NOT:$<CONFIG:Release>>:SceGnmx> $<$<NOT:$<CONFIG:Release>>:SceDbg_stub_weak> $<$<CONFIG:Release>:SceGnm_lto> $<$<CONFIG:Release>:SceGnmx_lto>)
 	else()
 		CryFileContainer(CryRenderGNM SOLUTION_FOLDER "CryEngine")
 	endif()
@@ -1128,10 +1131,6 @@ if (EXISTS ${SDK_DIR}/Orbis AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/GNM)
 		find_library(WAVEPSSLC libSceShaderWavePsslc PATHS ${CMAKE_SOURCE_DIR}/Code/SDKs/Orbis/host_tools/lib)
 		mark_as_advanced(FORCE WAVEPSSLC)
 		target_link_libraries(${THIS_PROJECT} PRIVATE ${WAVEPSSLC})
-		set(gnm_compiler_path)
-		string(REPLACE "\"" "" gnm_compiler_path ${gnm_compiler_version})
-		set_property(TARGET ${THIS_PROJECT} PROPERTY LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Tools/RemoteShaderCompiler/Compiler/${gnm_compiler_path})
-	else()
-		CryFileContainer(GnmShaderCompiler SOLUTION_FOLDER "Tools")
+		set_property(TARGET ${THIS_PROJECT} PROPERTY LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Tools/RemoteShaderCompiler/Compiler/${gnm_compiler_version})
 	endif()
 endif()

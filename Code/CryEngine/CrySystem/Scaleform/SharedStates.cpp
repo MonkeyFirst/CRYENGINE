@@ -152,6 +152,101 @@ void CryGFxURLBuilder::BuildURL(GString* pPath, const LocationInfo& loc)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// CryGFxTextClipboard
+
+CryGFxTextClipboard::CryGFxTextClipboard()
+{
+	if (auto pSystem = gEnv->pSystem)
+	{
+#if CRY_PLATFORM_WINDOWS
+		HandleMessage(reinterpret_cast<HWND>(pSystem->GetHWND()), WM_CLIPBOARDUPDATE, 0, 0, nullptr); // Sync current clipboard content with Scaleform
+#endif // CRY_PLATFORM_WINDOWS
+		pSystem->RegisterWindowMessageHandler(this);
+		pSystem->GetISystemEventDispatcher()->RegisterListener(this);
+	}
+}
+
+CryGFxTextClipboard::~CryGFxTextClipboard()
+{
+	OnSystemEvent(ESYSTEM_EVENT_FAST_SHUTDOWN, 0, 0);
+}
+
+CryGFxTextClipboard& CryGFxTextClipboard::GetAccess()
+{
+	static CryGFxTextClipboard s_inst;
+	return s_inst;
+}
+
+void CryGFxTextClipboard::OnTextStore(const wchar_t* szText, UPInt length)
+{
+#if CRY_PLATFORM_WINDOWS
+	// Copy to windows clipboard
+	if (OpenClipboard(nullptr) != 0)
+	{
+		// Avoid endless notification loop
+		RemoveClipboardFormatListener(reinterpret_cast<HWND>(gEnv->pSystem->GetHWND()));
+
+		EmptyClipboard();
+
+		static_assert(sizeof(wchar_t) == 2, "sizeof(wchar_t) needs to be 2 to be compatible with Scaleform.");
+		const HGLOBAL clipboardData = GlobalAlloc(GMEM_DDESHARE, sizeof(wchar_t) * (length + 1));
+
+		wchar_t* const pData = reinterpret_cast<wchar_t*>(GlobalLock(clipboardData));
+		G_wcscpy(pData, length + 1, szText);
+		GlobalUnlock(clipboardData);
+
+		SetClipboardData(CF_UNICODETEXT, clipboardData);
+
+		CloseClipboard();
+
+		AddClipboardFormatListener(reinterpret_cast<HWND>(gEnv->pSystem->GetHWND()));
+	}
+#endif // CRY_PLATFORM_WINDOWS
+}
+
+#if CRY_PLATFORM_WINDOWS
+bool CryGFxTextClipboard::HandleMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT* pResult)
+{
+	if (uMsg == WM_CLIPBOARDUPDATE)
+	{
+		if (OpenClipboard(nullptr) != 0)
+		{
+			wstring data;
+			const HANDLE wideData = GetClipboardData(CF_UNICODETEXT);
+			if (wideData)
+			{
+				const LPCWSTR pWideData = (LPCWSTR)GlobalLock(wideData);
+				if (pWideData)
+				{
+					// Note: This conversion is just to make sure we discard malicious or malformed data
+					Unicode::ConvertSafe<Unicode::eErrorRecovery_Discard>(data, pWideData);
+					GlobalUnlock(wideData);
+				}
+			}
+			CloseClipboard();
+
+			SetText(data.c_str(), data.size());
+		}
+	}
+
+	return false;
+}
+#endif // CRY_PLATFORM_WINDOWS
+
+void CryGFxTextClipboard::OnSystemEvent(ESystemEvent event, UINT_PTR wparam, UINT_PTR lparam)
+{
+	if (event == ESYSTEM_EVENT_FAST_SHUTDOWN
+		|| event == ESYSTEM_EVENT_FULL_SHUTDOWN)
+	{
+		if (gEnv && gEnv->pSystem)
+		{
+			gEnv->pSystem->UnregisterWindowMessageHandler(this);
+			gEnv->pSystem->GetISystemEventDispatcher()->RemoveListener(this);
+		}
+	}
+}
+
+//////////////////////////////////////////////////////////////////////////
 // CryGFxTranslator
 
 CryGFxTranslator::CryGFxTranslator()

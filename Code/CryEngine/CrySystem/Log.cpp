@@ -19,7 +19,6 @@
 #include <CryNetwork/INetwork.h>  // EvenBalance - M. Quinn
 #include "System.h"
 #include <CryString/CryPath.h>          // PathUtil::ReplaceExtension()
-#include <CryGame/IGame.h>
 #include <CryGame/IGameFramework.h>
 #include <CryString/UnicodeFunctions.h>
 
@@ -399,8 +398,11 @@ int MatchStrings(const char* str0, const char* str1)
 					}
 					while (!(bAlpha[i] | bWS[i] | bStop));
 			// wait for a letter or a space in each input string
-			len += bAlpha[0] & bAlpha[1];
-			nWordDiffs += 1 - iszero((int)(*str[0] - *str[1])) & - (bAlpha[0] & bAlpha[1]); // count diffs in this word
+			if (!bStop)
+			{
+				len += bAlpha[0] & bAlpha[1];
+				nWordDiffs += 1 - iszero((int)(*str[0] - *str[1])) & -(bAlpha[0] & bAlpha[1]); // count diffs in this word
+			}
 		}
 		while ((1 - bWS[0] | 1 - bWS[1]) & 1 - bStop); // wait for space (word end) in both strings
 		nDiffs += nWordDiffs & ~-bSkipWord;
@@ -937,9 +939,9 @@ void CLog::LogStringToFile(const char* szString, bool bAdd, bool bError)
 		char sTime[21];
 		if (dwCVarState == 5) // Log_IncludeTime
 		{
-			if (gEnv->pGame)
+			if (gEnv->pGameFramework)
 			{
-				CTimeValue serverTime = gEnv->pGame->GetIGameFramework()->GetServerTime();
+				CTimeValue serverTime = gEnv->pGameFramework->GetServerTime();
 				cry_sprintf(sTime, "<%.2f> ", serverTime.GetSeconds());
 				tempString.insert(0, sTime);
 			}

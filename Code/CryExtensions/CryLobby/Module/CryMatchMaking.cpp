@@ -3,8 +3,9 @@
 #include "StdAfx.h"
 #include "CryMatchMaking.h"
 #include "CrySharedLobbyPacket.h"
-#include <CryGame/IGame.h>
+
 #include <CryGame/IGameFramework.h>
+#include <CryRenderer/IRenderAuxGeom.h>
 #include "LAN/CryLANLobby.h"
 #include "CryDedicatedServer.h"
 
@@ -127,6 +128,10 @@ CCryMatchMaking::CCryMatchMaking(CCryLobby* lobby, CCryLobbyService* service, EC
 		#if ENABLE_HOST_MIGRATION_STATE_CHECK
 	m_hostMigrationStateCheckSession = CryLobbyInvalidSessionHandle;
 		#endif
+	#endif
+
+	#if MATCHMAKING_USES_DEDICATED_SERVER_ARBITRATOR
+	m_arbitratorAddr = SNullAddr();
 	#endif
 }
 
@@ -476,12 +481,6 @@ void CCryMatchMaking::Tick(CTimeValue tv)
 	#if !defined(_RELEASE)
 void CCryMatchMaking::DrawDebugText()
 {
-	if (CryGetCurrentThreadId() != gEnv->mMainThreadId)
-	{
-		// During loading, this can happen not on the main thread, this can cause a crash in the renderer since Draw2dLabel is not thread safe
-		return;
-	}
-
 	static float white[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	static float red[] = { 1.0f, 0.0f, 0.0f, 1.0f };
 	static float green[] = { 0.0f, 1.0f, 0.0f, 1.0f };
@@ -496,7 +495,7 @@ void CCryMatchMaking::DrawDebugText()
 
 			if (pTask->used)
 			{
-				gEnv->pRenderer->Draw2dLabel(xpos, ypos, 1.5f, white, false, "[Matchmaking]: task [%i], startedTask [%i][%i]", i, pTask->startedTask, pTask->subTask);
+				IRenderAuxText::Draw2dLabel(xpos, ypos, 1.5f, white, false, "[Matchmaking]: task [%i], startedTask [%i][%i]", i, pTask->startedTask, pTask->subTask);
 				ypos += 15.0f;
 			}
 		}
@@ -1732,7 +1731,7 @@ void CCryMatchMaking::SessionDisconnectRemoteConnectionViaNub(CryLobbySessionHan
 
 	if ((pSession->localFlags & CRYSESSION_LOCAL_FLAG_USED) && (pSession->createFlags & CRYSESSION_CREATE_FLAG_NUB))
 	{
-		INetNubPrivate* pNub = (INetNubPrivate*)gEnv->pGame->GetIGameFramework()->GetServerNetNub();
+		INetNubPrivate* pNub = (INetNubPrivate*)gEnv->pGameFramework->GetServerNetNub();
 
 		if (pNub)
 		{
@@ -3601,7 +3600,7 @@ bool CCryMatchMaking::IsHostMigrationFinished(CryLobbySessionHandle h)
 	{
 		if (pInfo->ShouldMigrateNub())
 		{
-			INetNubPrivate* pNub = (INetNubPrivate*)gEnv->pGame->GetIGameFramework()->GetServerNetNub();
+			INetNubPrivate* pNub = (INetNubPrivate*)gEnv->pGameFramework->GetServerNetNub();
 
 			if (pNub)
 			{
@@ -4136,7 +4135,7 @@ void CCryMatchMaking::EndSessionSetupDedicatedServer(CryMatchMakingTaskID mmTask
 
 			if (pServerAddr)
 			{
-				const SIPv4Addr* pIPv4Addr = boost::get<const SIPv4Addr>(pServerAddr);
+				const SIPv4Addr* pIPv4Addr = stl::get_if<SIPv4Addr>(pServerAddr);
 
 				if (pIPv4Addr)
 				{
@@ -4166,7 +4165,7 @@ void CCryMatchMaking::SendServerInfo(CryLobbySessionHandle h, CryMatchMakingConn
 
 		if (pServerAddr)
 		{
-			pIPv4Addr = boost::get<const SIPv4Addr>(pServerAddr);
+			pIPv4Addr = stl::get_if<SIPv4Addr>(pServerAddr);
 		}
 	}
 

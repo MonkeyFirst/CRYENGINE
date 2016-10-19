@@ -102,12 +102,11 @@ add_sources("NoUberFile"
 end_sources()
 #END-FILE-LIST
 
-CryEngineModule(CryPhysics SOLUTION_FOLDER "CryEngine")
-if(ORBIS)
-	target_compile_options(${THIS_PROJECT} PRIVATE -Wno-constant-conversion -Wno-null-dereference -Wno-array-bounds)
-endif()
-if(OPTION_RC)
-	CryResourceCompilerModule(CryPhysicsRC PCH "StdAfx.cpp" SOLUTION_FOLDER "RC")
+if(NOT RESOURCE_COMPILER)
+	CryEngineModule(CryPhysics SOLUTION_FOLDER "CryEngine")
+	if(ORBIS)
+		target_compile_options(${THIS_PROJECT} PRIVATE -Wno-constant-conversion -Wno-null-dereference -Wno-array-bounds)
+	endif()
 else()
-	CryfileContainer(CryPhysicsRC SOLUTION_FOLDER "RC")
+	CryResourceCompilerModule(CryPhysicsRC PCH "StdAfx.cpp" SOLUTION_FOLDER "RC")
 endif()

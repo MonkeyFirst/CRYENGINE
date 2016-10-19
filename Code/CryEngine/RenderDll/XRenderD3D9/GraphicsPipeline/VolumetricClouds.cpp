@@ -194,7 +194,6 @@ struct SVolumetricCloudsShaderParam
 
 	// upscale parameters
 	Vec4 fullScreenSize;
-	Vec4 scaledScreenSize;
 	Vec4 cloudBlockerSSPos;
 	Vec4 cloudBlockerSSParam;
 };
@@ -477,13 +476,13 @@ void CVolumetricCloudsStage::Init()
 	m_pCloudShadowTex = CTexture::CreateTextureObject("$VolCloudShadowTmp", 0, 0, 0, eTT_3D, uavFlags, eTF_Unknown);
 
 	CRY_ASSERT(m_pCloudShadowConstantBuffer.get() == nullptr);
-	m_pCloudShadowConstantBuffer.Assign_NoAddRef(gcpRendD3D->m_DevBufMan.CreateConstantBuffer(sizeof(SCloudShadowShaderParam)));
+	m_pCloudShadowConstantBuffer = gcpRendD3D->m_DevBufMan.CreateConstantBuffer(sizeof(SCloudShadowShaderParam));
 
 	CRY_ASSERT(m_pRenderCloudConstantBuffer.get() == nullptr);
-	m_pRenderCloudConstantBuffer.Assign_NoAddRef(gcpRendD3D->m_DevBufMan.CreateConstantBuffer(sizeof(SVolumetricCloudsShaderParam)));
+	m_pRenderCloudConstantBuffer = gcpRendD3D->m_DevBufMan.CreateConstantBuffer(sizeof(SVolumetricCloudsShaderParam));
 
 	CRY_ASSERT(m_pReprojectionConstantBuffer.get() == nullptr);
-	m_pReprojectionConstantBuffer.Assign_NoAddRef(gcpRendD3D->m_DevBufMan.CreateConstantBuffer(sizeof(SReprojectionParam)));
+	m_pReprojectionConstantBuffer = gcpRendD3D->m_DevBufMan.CreateConstantBuffer(sizeof(SReprojectionParam));
 }
 
 void CVolumetricCloudsStage::Prepare(CRenderView* pRenderView)
@@ -491,7 +490,7 @@ void CVolumetricCloudsStage::Prepare(CRenderView* pRenderView)
 	CD3D9Renderer* const __restrict rd = gcpRendD3D;
 	const int32 screenWidth = rd->GetWidth();
 	const int32 screenHeight = rd->GetHeight();
-	const bool bStereo = rd->m_bDualStereoSupport;
+	const bool bStereo = rd->IsStereoEnabled();
 	const bool stereoReproj = bStereo && CRenderer::CV_r_VolumetricCloudsStereoReprojection != 0;
 
 	// TODO: move this texture to view-dependent structure if volumetric clouds is rendered in multiple view ports such as split screens.
@@ -1042,7 +1041,7 @@ void CVolumetricCloudsStage::UpdateCloudShadowGenShaderParam(const Vec3& texSize
 	CTypedConstantBuffer<SCloudShadowShaderParam> cb(m_pCloudShadowConstantBuffer);
 	CRY_ASSERT(m_pCloudShadowConstantBuffer->m_size >= sizeof(SCloudShadowShaderParam));
 
-	const Vec3 sunLightDirection = rp.m_pSunLight ? rp.m_pSunLight->GetPosition().normalized() : Vec3(0.0f, 0.0f, 0.0f);
+	const Vec3 sunLightDirection = PF.pSunDirection;
 	cb->sunLightDirection = Vec4(sunLightDirection, 0.0f);
 
 	cb->cloudGenParams = Vec4(altitude, thickness, cloudiness, extinction);
@@ -1268,7 +1267,7 @@ void CVolumetricCloudsStage::UpdateCloudShaderParam(::VCCloudRenderContext& cont
 
 	const int32 width = rd->GetWidth();
 	const int32 height = rd->GetHeight();
-	const bool bStereo = rd->m_bDualStereoSupport;
+	const bool bStereo = rd->IsStereoEnabled();
 	const bool bReverseDepth = (ti.m_PersFlags & RBPF_REVERSE_DEPTH) != 0;
 	const f32 time = ti.m_RealTime;
 	const int32 curEye = rd->m_CurRenderEye;
@@ -1372,7 +1371,7 @@ void CVolumetricCloudsStage::UpdateCloudShaderParam(::VCCloudRenderContext& cont
 			cb.cameraPos = rc.vOrigin;
 			cb.cameraFrontVector = rc.vZ.GetNormalized();
 
-			cb.sunLightDirection = rp.m_pSunLight ? rp.m_pSunLight->GetPosition().normalized() : Vec3(0.0f, 0.0f, 0.0f);
+			cb.sunLightDirection = PF.pSunDirection;
 
 			cb.nearClipDist = rc.fNear;
 			cb.farClipDist = rc.fFar;
@@ -1530,7 +1529,7 @@ void CVolumetricCloudsStage::UpdateCloudShaderParam(::VCCloudRenderContext& cont
 		// upload data to constant buffer on GPU.
 		const auto size = sizeof(SVolumetricCloudsShaderParam);
 		CRY_ASSERT(m_pRenderCloudConstantBuffer->m_size >= size);
-		m_pRenderCloudConstantBuffer->UpdateBuffer(&bufferData[0], size, viewInfoCount);
+		m_pRenderCloudConstantBuffer->UpdateBuffer(&bufferData[0], size, 0, viewInfoCount);
 	}
 
 	// update constant buffer for temporal reprojection.
@@ -1568,7 +1567,7 @@ void CVolumetricCloudsStage::UpdateCloudShaderParam(::VCCloudRenderContext& cont
 
 		const auto size = sizeof(SReprojectionParam);
 		CRY_ASSERT(m_pReprojectionConstantBuffer->m_size >= size);
-		m_pReprojectionConstantBuffer->UpdateBuffer(&bufferData[0], size, viewInfoCount);
+		m_pReprojectionConstantBuffer->UpdateBuffer(&bufferData[0], size, 0, viewInfoCount);
 	}
 }
 
@@ -1608,7 +1607,7 @@ int32 CVolumetricCloudsStage::GetPreviousFrameIndex(const int32 gpuCount, bool b
 bool CVolumetricCloudsStage::AreTexturesValid() const
 {
 	CD3D9Renderer* const __restrict rd = gcpRendD3D;
-	const bool bStereo = rd->m_bDualStereoSupport;
+	const bool bStereo = rd->IsStereoEnabled();
 
 	bool bDownscaledRTs = CTexture::IsTextureExist(m_pCloudDepthTex)
 	                      && CTexture::IsTextureExist(m_pDownscaledMaxTempTex)

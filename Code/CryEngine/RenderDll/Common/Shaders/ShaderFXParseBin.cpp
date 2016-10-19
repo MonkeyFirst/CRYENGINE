@@ -12,6 +12,9 @@
 #include <CryCore/Platform/IPlatformOS.h>
 #include <CryCore/AlignmentTools.h>
 #include "../Textures/TextureHelpers.h"
+#include "DriverD3D.h"
+
+extern CD3D9Renderer gcpRendD3D;
 
 static FOURCC FOURCC_SHADERBIN = MAKEFOURCC('F', 'X', 'B', '0');
 
@@ -75,11 +78,11 @@ uint32 SShaderBin::ComputeCRC()
 		DWORD* pT = new DWORD[m_Tokens.size()];
 		memcpy(pT, &m_Tokens[0], m_Tokens.size() * sizeof(uint32));
 		SwapEndian(pT, (size_t)m_Tokens.size(), eBigEndian);
-		CRC32 = CCrc32::Compute((char*)pT, m_Tokens.size() * sizeof(uint32));
+		CRC32 = CCrc32::Compute((void*)pT, m_Tokens.size() * sizeof(uint32));
 		delete[] pT;
 	}
 	else
-		CRC32 = CCrc32::Compute((char*)&m_Tokens[0], m_Tokens.size() * sizeof(uint32));
+		CRC32 = CCrc32::Compute((void*)&m_Tokens[0], m_Tokens.size() * sizeof(uint32));
 	int nCur = 0;
 	Lock();
 	while (nCur >= 0)
@@ -2146,7 +2149,10 @@ bool CShaderManBin::ParseBinFX_Sampler(CParserBin& Parser, SParserFrame& Frame, 
 	ST.SetClampMode(nAddressU, nAddressV, nAddressW);
 	ST.SetBorderColor(dwBorderColor);
 
-	samp.m_nTexState = CTexture::GetTexState(ST);
+	if (!gcpRendD3D->IsShaderCacheGenMode())
+	{
+		samp.m_nTexState = CTexture::GetTexState(ST);
+	}
 	samp.m_nSlotId = m_pCEF->mfCheckTextureSlotName(samp.m_szTexture);
 
 	if (!Annotations.IsEmpty())
@@ -2350,7 +2356,10 @@ bool CShaderManBin::ParseBinFX_Sampler(CParserBin& Parser, SParserFrame& Frame, 
 		ST.SetClampMode(nAddressU, nAddressV, nAddressW);
 		ST.SetBorderColor(dwBorderColor);
 
-		Sampl.m_nTexState = CTexture::GetTexState(ST);
+		if (!gcpRendD3D->IsShaderCacheGenMode())
+		{
+			Sampl.m_nTexState = CTexture::GetTexState(ST);
+		}
 	}
 
 	Parser.EndFrame(OldFrame);
@@ -2418,9 +2427,9 @@ bool CShaderManBin::ParseBinFX_Texture(CParserBin& Parser, SParserFrame& Frame, 
 			}
 			break;
 #else
-        case eT_UIName:
-        case eT_UIDescription:
-            break;
+		case eT_UIName:
+		case eT_UIDescription:
+			break;
 #endif
 
 		case eT_sRGBLookup:
@@ -2452,7 +2461,6 @@ bool CShaderManBin::ParseBinFX_Texture(CParserBin& Parser, SParserFrame& Frame, 
 
 void CShaderManBin::AddAffectedParameter(CParserBin& Parser, std::vector<SFXParam>& AffectedParams, TArray<int>& AffectedFunc, SFXParam* pParam, EHWShaderClass eSHClass, uint32 dwType, SShaderTechnique* pShTech)
 {
-	static uint32 eT_ShadowGen[] = { CParserBin::GetCRC32("ShadowGenVS"), CParserBin::GetCRC32("ShadowGenPS"), CParserBin::GetCRC32("ShadowGenGS") };
 	if (!CParserBin::PlatformSupportsConstantBuffers())
 	{
 		//if (pParam->m_Name.c_str()[0] != '_')
@@ -2461,10 +2469,6 @@ void CShaderManBin::AddAffectedParameter(CParserBin& Parser, std::vector<SFXPara
 			{
 				if (pParam->m_nRegister[eSHClass] >= 0 && pParam->m_nRegister[eSHClass] < 10000)
 				{
-					if (pParam->m_nCB == CB_PER_SHADOWGEN && dwType != eT_ShadowGen[eSHClass])
-						return;
-					if ((pShTech->m_Flags & FHF_NOLIGHTS) && pParam->m_nCB == CB_PER_LIGHT)
-						return;
 					if ((pShTech->m_Flags & FHF_NOLIGHTS) && pParam->m_nCB == CB_PER_MATERIAL && !(pParam->m_nFlags & PF_TWEAKABLE_MASK))
 						return;
 					if (pParam->m_Semantic.empty() && pParam->m_Values.c_str()[0] == '(')
@@ -2475,7 +2479,7 @@ void CShaderManBin::AddAffectedParameter(CParserBin& Parser, std::vector<SFXPara
 			}
 		}
 	}
-	else if (pParam->m_nCB == CB_PER_LIGHT || pParam->m_nCB == CB_PER_MATERIAL || pParam->m_nCB == CB_PER_FRAME || pParam->m_nCB == CB_PER_SHADOWGEN)
+	else if (pParam->m_nCB == CB_PER_MATERIAL)
 	{
 		if (pParam->m_nRegister[eSHClass] < 0 || pParam->m_nRegister[eSHClass] >= 1000)
 			return;
@@ -2936,19 +2940,20 @@ bool CShaderManBin::ParseBinFX_Technique_Pass_PackParameters(CParserBin& Parser,
 
 //===================================================================================================
 
+template<int N>
 inline bool CompareVars(const SFXParam* a, const SFXParam* b)
 {
 	const uint16 nCB0 = a->m_nCB;
-	const int16 nReg0 = a->m_nRegister[gRenDev->m_RP.m_FlagsShader_LT];
-
 	const uint16 nCB1 = b->m_nCB;
-	const int16 nReg1 = b->m_nRegister[gRenDev->m_RP.m_FlagsShader_LT];
+	const int16 nReg0 = a->m_nRegister[N];
+	const int16 nReg1 = b->m_nRegister[N];
 
 	if (nCB0 != nCB1)
 		return (nCB0 < nCB1);
 	return (nReg0 < nReg1);
 }
-EToken dwNamesCB[CB_NUM] = { eT_PER_BATCH, eT_PER_INSTANCE, eT_PER_FRAME, eT_PER_MATERIAL, eT_PER_LIGHT, eT_PER_SHADOWGEN, eT_SKIN_DATA, eT_INSTANCE_DATA };
+
+EToken dwNamesCB[CB_NUM] = { eT_PER_BATCH, eT_PER_INSTANCE, eT_unknown, eT_PER_MATERIAL, eT_unknown, eT_unknown, eT_SKIN_DATA, eT_INSTANCE_DATA };
 
 void CShaderManBin::AddParameterToScript(CParserBin& Parser, SFXParam* pr, PodArray<uint32>& SHData, EHWShaderClass eSHClass, int nCB)
 {
@@ -3007,7 +3012,7 @@ void CShaderManBin::AddParameterToScript(CParserBin& Parser, SFXParam* pr, PodAr
 	if (nReg >= 0 && nReg < 10000)
 	{
 		SHData.push_back(eT_colon);
-		if (nCB == CB_PER_MATERIAL || nCB == CB_PER_FRAME || nCB == CB_PER_LIGHT || nCB == CB_PER_SHADOWGEN)
+		if (nCB == CB_PER_MATERIAL)
 			SHData.push_back(eT_packoffset);
 		else
 			SHData.push_back(eT_register);
@@ -3085,7 +3090,7 @@ void CShaderManBin::AddTextureToScript(CParserBin& Parser, SFXTexture* pr, PodAr
 bool CShaderManBin::ParseBinFX_Technique_Pass_GenerateShaderData(CParserBin& Parser, FXMacroBin& Macros, SShaderFXParams& FXParams, uint32 dwSHName, EHWShaderClass eSHClass, uint64& nAffectMask, uint32 dwSHType, PodArray<uint32>& SHData, SShaderTechnique* pShTech)
 {
 	LOADING_TIME_PROFILE_SECTION(iSystem);
-	assert(gRenDev->m_pRT->IsRenderThread());
+	assert(gRenDev->m_pRT->IsRenderThread() || gRenDev->m_pRT->IsLevelLoadingThread());
 
 	bool bRes = true;
 
@@ -3284,24 +3289,23 @@ bool CShaderManBin::ParseBinFX_Technique_Pass_GenerateShaderData(CParserBin& Par
 			int8 nPrevCB = -1;
 			std::vector<SFXParam*> ParamsData;
 
-			byte bMergeMask = (eSHClass == eHWSC_Pixel) ? 1 : 2;
-			bMergeMask <<= 4;
-			for (i = 0; i < AffectedParams.size(); i++)
-			{
-				SFXParam& pr = AffectedParams[i];
-				if (bMerged[i] & bMergeMask)
-					continue;
-				if (pr.m_nCB >= 0)
-					ParamsData.push_back(&pr);
-			}
-			if (eSHClass == eHWSC_Vertex)
-				gRenDev->m_RP.m_FlagsShader_LT = 0;
-			else if (eSHClass == eHWSC_Pixel)
-				gRenDev->m_RP.m_FlagsShader_LT = 1;
-			else
-				gRenDev->m_RP.m_FlagsShader_LT = 2;
+      byte bMergeMask = (eSHClass == eHWSC_Pixel) ? 1 : 2;
+      bMergeMask <<= 4;
+      for (i=0; i<AffectedParams.size(); i++)
+      {
+        SFXParam &pr = AffectedParams[i];
+        if (bMerged[i] & bMergeMask)
+          continue;
+        if (pr.m_nCB >= 0)
+          ParamsData.push_back(&pr);
+      }
 
-			std::sort(ParamsData.begin(), ParamsData.end(), CompareVars);
+		if (eSHClass == eHWSC_Vertex)
+			std::sort(ParamsData.begin(), ParamsData.end(), CompareVars<0>);
+		else if (eSHClass == eHWSC_Pixel)
+			std::sort(ParamsData.begin(), ParamsData.end(), CompareVars<1>);
+		else
+			std::sort(ParamsData.begin(), ParamsData.end(), CompareVars<2>);
 
 			// First we need to declare semantic variables (in CB scopes in case of DX11)
 			for (i = 0; i < ParamsData.size(); i++)
@@ -3418,7 +3422,7 @@ bool CShaderManBin::ParseBinFX_Technique_Pass_GenerateShaderData(CParserBin& Par
 
 bool CShaderManBin::ParseBinFX_Technique_Pass_LoadShader(CParserBin& Parser, FXMacroBin& Macros, SParserFrame& SHFrame, SShaderTechnique* pShTech, SShaderPass* pPass, EHWShaderClass eSHClass, SShaderFXParams& FXParams)
 {
-	assert(gRenDev->m_pRT->IsRenderThread());
+	assert(gRenDev->m_pRT->IsRenderThread() || gRenDev->m_pRT->IsLevelLoadingThread());
 
 	LOADING_TIME_PROFILE_SECTION(iSystem);
 	bool bRes = true;
@@ -4202,47 +4206,86 @@ bool CShaderManBin::ParseBinFX(SShaderBin* pBin, CShader* ef, uint64 nMaskGen)
 	Parser.BeginFrame(Frame);
 
 	FX_BEGIN_TOKENS
-	  FX_TOKEN(static)
-	FX_TOKEN(half)
-	FX_TOKEN(half2)
-	FX_TOKEN(half3)
-	FX_TOKEN(half4)
-	FX_TOKEN(half2x4)
-	FX_TOKEN(half3x4)
-	FX_TOKEN(half4x4)
-	FX_TOKEN(float)
-	FX_TOKEN(float2)
-	FX_TOKEN(float3)
-	FX_TOKEN(float4)
-	FX_TOKEN(float2x4)
-	FX_TOKEN(float3x4)
-	FX_TOKEN(float4x4)
-	FX_TOKEN(bool)
-	FX_TOKEN(int)
-	FX_TOKEN(struct)
-	FX_TOKEN(sampler1D)
-	FX_TOKEN(sampler2D)
-	FX_TOKEN(sampler3D)
-	FX_TOKEN(samplerCUBE)
-	FX_TOKEN(Texture2D)
-	FX_TOKEN(RWTexture2D)
-	FX_TOKEN(RWTexture2DArray)
-	FX_TOKEN(Texture2DArray)
-	FX_TOKEN(Texture2DMS)
-	FX_TOKEN(TextureCube)
-	FX_TOKEN(TextureCubeArray)
-	FX_TOKEN(Texture3D)
-	FX_TOKEN(RWTexture3D)
-	FX_TOKEN(technique)
-	FX_TOKEN(SamplerState)
-	FX_TOKEN(SamplerComparisonState)
-	FX_TOKEN(Buffer)
-	FX_TOKEN(RWBuffer)
-	FX_TOKEN(StructuredBuffer)
-	FX_TOKEN(RWStructuredBuffer)
-	FX_TOKEN(ByteAddressBuffer)
-	FX_TOKEN(RWByteAddressBuffer)
-	FX_TOKEN(cbuffer)
+		FX_TOKEN(static)
+		FX_TOKEN(unorm)
+		FX_TOKEN(snorm)
+		FX_TOKEN(float)
+		FX_TOKEN(float2)
+		FX_TOKEN(float3)
+		FX_TOKEN(float4)
+		FX_TOKEN(float2x4)
+		FX_TOKEN(float3x4)
+		FX_TOKEN(float4x4)
+		FX_TOKEN(float3x3)
+		FX_TOKEN(half)
+		FX_TOKEN(half2)
+		FX_TOKEN(half3)
+		FX_TOKEN(half4)
+		FX_TOKEN(half2x4)
+		FX_TOKEN(half3x4)
+		FX_TOKEN(half4x4)
+		FX_TOKEN(half3x3)
+		FX_TOKEN(bool)
+		FX_TOKEN(int)
+		FX_TOKEN(int2)
+		FX_TOKEN(int3)
+		FX_TOKEN(int4)
+		FX_TOKEN(uint)
+		FX_TOKEN(uint2)
+		FX_TOKEN(uint3)
+		FX_TOKEN(uint4)
+		FX_TOKEN(min16float)
+		FX_TOKEN(min16float2)
+		FX_TOKEN(min16float3)
+		FX_TOKEN(min16float4)
+		FX_TOKEN(min16float4x4)
+		FX_TOKEN(min16float3x4)
+		FX_TOKEN(min16float2x4)
+		FX_TOKEN(min16float3x3)
+		FX_TOKEN(min10float)
+		FX_TOKEN(min10float2)
+		FX_TOKEN(min10float3)
+		FX_TOKEN(min10float4)
+		FX_TOKEN(min10float4x4)
+		FX_TOKEN(min10float3x4)
+		FX_TOKEN(min10float2x4)
+		FX_TOKEN(min10float3x3)
+		FX_TOKEN(min16int)
+		FX_TOKEN(min16int2)
+		FX_TOKEN(min16int3)
+		FX_TOKEN(min16int4)
+		FX_TOKEN(min12int)
+		FX_TOKEN(min12int2)
+		FX_TOKEN(min12int3)
+		FX_TOKEN(min12int4)
+		FX_TOKEN(min16uint)
+		FX_TOKEN(min16uint2)
+		FX_TOKEN(min16uint3)
+		FX_TOKEN(min16uint4)
+		FX_TOKEN(struct)
+		FX_TOKEN(sampler1D)
+		FX_TOKEN(sampler2D)
+		FX_TOKEN(sampler3D)
+		FX_TOKEN(samplerCUBE)
+		FX_TOKEN(Texture2D)
+		FX_TOKEN(RWTexture2D)
+		FX_TOKEN(RWTexture2DArray)
+		FX_TOKEN(Texture2DArray)
+		FX_TOKEN(Texture2DMS)
+		FX_TOKEN(TextureCube)
+		FX_TOKEN(TextureCubeArray)
+		FX_TOKEN(Texture3D)
+		FX_TOKEN(RWTexture3D)
+		FX_TOKEN(technique)
+		FX_TOKEN(SamplerState)
+		FX_TOKEN(SamplerComparisonState)
+		FX_TOKEN(Buffer)
+		FX_TOKEN(RWBuffer)
+		FX_TOKEN(StructuredBuffer)
+		FX_TOKEN(RWStructuredBuffer)
+		FX_TOKEN(ByteAddressBuffer)
+		FX_TOKEN(RWByteAddressBuffer)
+		FX_TOKEN(cbuffer)
 	FX_END_TOKENS
 
 	std::vector<SShaderTechParseParams> techParams;
@@ -4437,18 +4480,10 @@ bool CShaderManBin::ParseBinFX(SShaderBin* pBin, CShader* ef, uint64 nMaskGen)
 							Pr.m_nCB = CB_SKIN_DATA;
 						else if (!assign[0] || !strnicmp(assign, "PB_", 3))
 							Pr.m_nCB = CB_PER_BATCH;
-						else if (!assign[0] || !strnicmp(assign, "SG_", 3))
-							Pr.m_nCB = CB_PER_SHADOWGEN;
 						else if (!strnicmp(assign, "PI_", 3) || !strnicmp(assign, "SI_", 3))
 							Pr.m_nCB = CB_PER_INSTANCE;
-						else if (!strnicmp(assign, "PF_", 3))
-							Pr.m_nCB = CB_PER_FRAME;
 						else if (!strnicmp(assign, "PM_", 3))
-						{
 							Pr.m_nCB = CB_PER_MATERIAL;
-						}
-						else if (!strnicmp(assign, "PL_", 3))
-							Pr.m_nCB = CB_PER_LIGHT;
 						else if (!strnicmp(assign, "register", 8))
 							Pr.m_nCB = CB_PER_BATCH;
 						else

@@ -6,6 +6,7 @@
 #include "DriverD3D.h"
 #include "../Common/PostProcess/PostProcessUtils.h"
 #include <CryRenderer/RenderElements/RendElement.h>
+#include <Common/RendElements/MeshUtil.h>
 
 CRenderPrimitive::SPrimitiveGeometry CRenderPrimitive::s_primitiveGeometryCache[CRenderPrimitive::ePrim_Count];
 int CRenderPrimitive::s_nPrimitiveGeometryCacheUsers = 0;
@@ -70,6 +71,7 @@ CRenderPrimitive::CRenderPrimitive(CRenderPrimitive&& other)
 	, m_primitiveGeometry(std::move(other.m_primitiveGeometry))
 	, m_constantManager(std::move(other.m_constantManager))
 	, m_currentPsoUpdateCount(std::move(other.m_currentPsoUpdateCount))
+	, m_bDepthClip(std::move(other.m_bDepthClip))
 {
 }
 
@@ -85,6 +87,7 @@ CRenderPrimitive::CRenderPrimitive(EPrimitiveFlags flags)
 	, m_rtMask(0)
 	, m_primitiveType(ePrim_Triangle)
 	, m_currentPsoUpdateCount(0)
+	, m_bDepthClip(true)
 {
 	m_pResources = CCryDeviceWrapper::GetObjectFactory().CreateResourceSet(CDeviceResourceSet::EFlags_ForceSetAllState);
 	m_instances.resize(1);
@@ -108,6 +111,7 @@ void CRenderPrimitive::Reset(EPrimitiveFlags flags)
 	m_rtMask = 0;
 	m_primitiveType = ePrim_Triangle;
 	m_currentPsoUpdateCount = 0;
+	m_bDepthClip = true;
 
 	m_pResources = std::move(pResources);
 	m_instances.resize(1);
@@ -117,10 +121,7 @@ void CRenderPrimitive::Reset(EPrimitiveFlags flags)
 
 void CRenderPrimitive::AllocateTypedConstantBuffer(EConstantBufferShaderSlot shaderSlot, int size, EShaderStage shaderStages)
 {
-	CConstantBufferPtr pCB;
-	pCB.Assign_NoAddRef(gcpRendD3D->m_DevBufMan.CreateConstantBuffer(size));
-
-	SetInlineConstantBuffer(shaderSlot, pCB, shaderStages);
+	SetInlineConstantBuffer(shaderSlot, gcpRendD3D->m_DevBufMan.CreateConstantBuffer(size), shaderStages);
 }
 
 bool CRenderPrimitive::IsDirty() const
@@ -224,6 +225,7 @@ CRenderPrimitive::EDirtyFlags CRenderPrimitive::Compile(uint32 renderTargetCount
 		psoDesc.m_StencilReadMask = m_stencilReadMask;
 		psoDesc.m_StencilWriteMask = m_stencilWriteMask;
 		psoDesc.m_CullMode = m_cullMode;
+		psoDesc.m_bDepthClip = m_bDepthClip;
 		m_pPipelineState = CCryDeviceWrapper::GetObjectFactory().CreateGraphicsPSO(psoDesc);
 
 		if (!m_pPipelineState || !m_pPipelineState->IsValid())
@@ -306,6 +308,21 @@ void CRenderPrimitive::AddPrimitiveGeometryCacheUser()
 				CDeferredRenderUtils::CreateUnitFrustumMesh(nFrustTess, nFrustTess, indices, vertices);
 				initPrimitiveGeometryStreams(s_primitiveGeometryCache[i], vertices, indices);
 			}
+		}
+
+		// fullscreen quad
+		{
+			MeshUtil::GenScreenTile(-1, -1, 1, 1, ColorF(1, 1, 1, 1), 1, 1, vertices, indices);
+			initPrimitiveGeometryStreams(s_primitiveGeometryCache[ePrim_FullscreenQuad], vertices, indices);	
+		}
+
+		// tessellated fullscreen quad
+		{
+			const int rowCount = 15;
+			const int colCount = 25;
+
+			MeshUtil::GenScreenTile(-1, -1, 1, 1, ColorF(1, 1, 1, 1), rowCount, colCount, vertices, indices);
+			initPrimitiveGeometryStreams(s_primitiveGeometryCache[ePrim_FullscreenQuadTess], vertices, indices);
 		}
 	}
 

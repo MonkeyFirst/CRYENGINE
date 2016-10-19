@@ -4,6 +4,7 @@
 #define __RENDELEMENT_H__
 
 #include <CryRenderer/VertexFormats.h>
+#include <CryMath/Cry_Color.h>
 
 class CRendElementBase;
 struct CRenderChunk;
@@ -36,40 +37,25 @@ enum EDataType
 	eDATA_WaterVolume,
 	eDATA_WaterOcean,
 	eDATA_VolumeObject,
-	eDATA_PrismObject,        //!< Normally this would be #if !defined(EXCLUDE_DOCUMENTATION_PURPOSE) but we keep it to get consistent numbers for serialization.
 	eDATA_DeferredShading,
 	eDATA_GameEffect,
 	eDATA_BreakableGlass,
 	eDATA_GeomCache,
 };
 
-#include <CryMath/Cry_Color.h>
+enum ERenderElementFlags
+{
+	FCEF_TRANSFORM             = BIT(0),
+	FCEF_DIRTY                 = BIT(1),
+	FCEF_NODEL                 = BIT(2),
+	FCEF_DELETED               = BIT(3),
 
-#define FCEF_TRANSFORM             1
-#define FCEF_DIRTY                 2
-#define FCEF_NODEL                 4
-#define FCEF_DELETED               8
+	FCEF_UPDATEALWAYS          = BIT(8),
+	FCEF_ALLOC_CUST_FLOAT_DATA = BIT(9),
 
-#define FCEF_MODIF_TC              0x10
-#define FCEF_MODIF_VERT            0x20
-#define FCEF_MODIF_COL             0x40
-#define FCEF_MODIF_MASK            0xf0
-
-#define FCEF_UPDATEALWAYS          0x100
-#define FCEF_ALLOC_CUST_FLOAT_DATA 0x200
-#define FCEF_MERGABLE              0x400
-
-#define FCEF_SKINNED               0x800
-#define FCEF_PRE_DRAW_DONE         0x1000
-
-#define FGP_NOCALC                 1
-#define FGP_SRC                    2
-#define FGP_REAL                   4
-#define FGP_WAIT                   8
-
-#define FGP_STAGE_SHIFT            0x10
-
-#define MAX_CUSTOM_TEX_BINDS_NUM   2
+	FCEF_SKINNED               = BIT(11),
+	FCEF_PRE_DRAW_DONE         = BIT(12),
+};
 
 class CRendElement
 {
@@ -136,13 +122,14 @@ public:
 	uint16     m_Flags;
 	uint16     m_nFrameUpdated;
 
-public:
+	enum { MAX_CUSTOM_TEX_BINDS_NUM = 2 };
 	void* m_CustomData;
 	int   m_CustomTexBind[MAX_CUSTOM_TEX_BINDS_NUM];
 
+public:
 	struct SGeometryInfo
 	{
-		uint32        bonesRemapGUID; // Input paremeter to fetch correct skinning stream.
+		uint32        bonesRemapGUID; // Input parameter to fetch correct skinning stream.
 
 		int           primitiveType; //!< \see eRenderPrimitiveType
 		EVertexFormat eVertFormat;
@@ -202,7 +189,7 @@ public:
 	virtual CRenderChunk*      mfGetMatInfo();
 	virtual TRenderChunkArray* mfGetMatInfoList();
 	virtual int                mfGetMatId();
-	virtual void               mfReset();
+	virtual void               mfReset() override;
 	virtual bool               mfIsHWSkinned() { return false; }
 	virtual CRendElementBase*  mfCopyConstruct(void);
 	virtual void               mfCenter(Vec3& centr, CRenderObject* pObj);
@@ -221,13 +208,28 @@ public:
 	virtual void  mfExport(struct SShaderSerializeContext& SC)                               { CryFatalError("mfExport has not been implemented for this render element type"); }
 	virtual void  mfImport(struct SShaderSerializeContext& SC, uint32& offset)               { CryFatalError("mfImport has not been implemented for this render element type"); }
 
-	// New Pipeline
+
+	//////////////////////////////////////////////////////////////////////////
+	// ~Pipeline 2.0 methods.
+	//////////////////////////////////////////////////////////////////////////
+
 	virtual EVertexFormat GetVertexFormat() const                                                    { return eVF_Unknown; };
 	virtual bool          GetGeometryInfo(SGeometryInfo& streams, bool bSupportTessellation = false) { return false; }
-	virtual void          Draw(CRenderObject* pObj, const struct SGraphicsPipelinePassContext& ctx)  {};
 
-	virtual int           Size()                                                                     { return 0; }
-	virtual void          GetMemoryUsage(ICrySizer* pSizer) const                                    {}
+	//! Compile is called on a non mesh render elements, must be called only in rendering thread
+	//! Returns false if compile failed, and render element must not be rendered
+	virtual bool          Compile(CRenderObject* pObj)  { return false; };
+
+	//! Custom Drawing for the non mesh render elements.
+	//! Must be thread safe for the parallel recording
+	virtual void          DrawToCommandList(CRenderObject* pObj, const struct SGraphicsPipelinePassContext& ctx)  {};
+	
+	//////////////////////////////////////////////////////////////////////////
+	// ~Pipeline 2.0 methods.
+	//////////////////////////////////////////////////////////////////////////
+
+	virtual int           Size() override                                                            { return 0; }
+	virtual void          GetMemoryUsage(ICrySizer* pSizer) const override                           {}
 };
 
 #include "CREMesh.h"
@@ -244,9 +246,5 @@ public:
 #include "CREGameEffect.h"
 #include "CREBreakableGlass.h"
 #include <Cry3DEngine/CREGeomCache.h>
-
-#if !defined(EXCLUDE_DOCUMENTATION_PURPOSE)
-	#include "CREPrismObject.h"
-#endif // EXCLUDE_DOCUMENTATION_PURPOSE
 
 #endif  // __RENDELEMENT_H__

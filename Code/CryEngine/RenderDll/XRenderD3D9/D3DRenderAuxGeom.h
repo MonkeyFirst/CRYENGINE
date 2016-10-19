@@ -16,6 +16,8 @@ public:
 	virtual void Flush(SAuxGeomCBRawDataPackaged& data, size_t begin, size_t end, bool reset = false);
 	virtual void RT_Flush(SAuxGeomCBRawDataPackaged& data, size_t begin, size_t end, bool reset = false);
 
+	virtual void DrawStringImmediate(IFFont_RenderProxy* pFont, float x, float y, float z, const char* pStr, const bool asciiMultiLine, const STextDrawContext& ctx);
+
 	virtual void FlushTextMessages(CTextMessages& tMessages, bool reset);
 
 	void         Process();
@@ -179,9 +181,9 @@ private:
 
 					gRenDev->GetThreadIDs(mainThreadID, renderThreadID);
 
-					if (tid == renderThreadID) pAuxGeomCB = new CAuxGeomCB(pRenderAuxGeomImpl);
+					if (tid == renderThreadID)    pAuxGeomCB = new CAuxGeomCB(pRenderAuxGeomImpl);
 					else if (tid == mainThreadID) pAuxGeomCB = new CAuxGeomCBMainThread(pRenderAuxGeomImpl);
-					else                             pAuxGeomCB = new CAuxGeomCBWorkerThread(pRenderAuxGeomImpl);
+					else                          pAuxGeomCB = new CAuxGeomCBWorkerThread(pRenderAuxGeomImpl);
 
 					m_rwlLocal.WLock();
 					m_auxJobMap.insert(AUXJobMap::value_type(jobID, pAuxGeomCB));

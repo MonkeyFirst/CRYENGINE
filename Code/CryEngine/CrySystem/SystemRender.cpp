@@ -40,7 +40,6 @@
 #include <CrySystem/ITextModeConsole.h>
 #include "HardwareMouse.h"
 #include <CryEntitySystem/IEntitySystem.h> // <> required for Interfuscator
-#include <CryGame/IGame.h>
 #include "NullImplementation/NULLRenderAuxGeom.h"
 
 #include "MiniGUI/MiniGUI.h"
@@ -220,15 +219,6 @@ void CSystem::RenderEnd(bool bRenderStats)
 
 		GetPlatformOS()->RenderEnd();
 
-		if (m_env.pGame)
-			m_env.pGame->RenderGameWarnings();
-
-
-#if !defined(_RELEASE) && !CRY_PLATFORM_DURANGO
-		if (bRenderStats)
-			RenderPhysicsHelpers();
-#endif
-
 #if !defined (_RELEASE)
 		// Flush render data and swap buffers.
 		m_env.pRenderer->RenderDebug(bRenderStats);
@@ -273,6 +263,9 @@ void CSystem::RenderEnd(bool bRenderStats)
 void CSystem::RenderPhysicsHelpers()
 {
 #if !defined (_RELEASE)
+	if (m_bIgnoreUpdates)
+		return;
+
 	if (gEnv->pPhysicalWorld)
 	{
 		char str[128];
@@ -361,11 +354,11 @@ void CSystem::RenderPhysicsStatistics(IPhysicalWorld* pWorld)
 				  dt = gEnv->pTimer->TicksToSeconds(pInfos[i].nTicksAvg) * 1000.0f, pInfos[i].nCallsAvg,
 				  gEnv->pTimer->TicksToSeconds(pInfos[i].nTicksPeak) * 1000.0f, pInfos[i].nCallsPeak,
 				  pInfos[i].pName ? pInfos[i].pName : "", pInfos[i].id);
-				GetIRenderer()->Draw2dLabel(renderMarginX, renderMarginY + i * lineSize, fontSize, fColor, false, "%s", msgbuf);
+				IRenderAuxText::Draw2dLabel(renderMarginX, renderMarginY + i * lineSize, fontSize, fColor, false, "%s", msgbuf);
 				if (pTMC) pTMC->PutText(0, i, msgbuf);
 				IPhysicalEntity* pent = pWorld->GetPhysicalEntityById(pInfos[i].id);
 				if (dt > 0.1f && pInfos[i].pName && pent && pent->GetStatus(&sp))
-					GetIRenderer()->DrawLabelEx(sp.pos + Vec3(0, 0, sp.BBox[1].z), 1.4f, fColor, true, true, "%s %.2fms", pInfos[i].pName, dt);
+					IRenderAuxText::DrawLabelExF(sp.pos + Vec3(0, 0, sp.BBox[1].z), 1.4f, fColor, true, true, "%s %.2fms", pInfos[i].pName, dt);
 				pInfos[i].peakAge = pInfos[i].peakAge + 1 & ~mask;
 				//pInfos[i].nCalls=pInfos[i].nTicks = 0;
 			}
@@ -397,7 +390,7 @@ void CSystem::RenderPhysicsStatistics(IPhysicalWorld* pWorld)
 				mask                 |= (70 - pInfos[j].peakAge) >> 31;
 				pInfos[j].nTicksPeak += pInfos[j].nTicks - pInfos[j].nTicksPeak & mask;
 				pInfos[j].nCallsPeak += pInfos[j].nCalls - pInfos[j].nCallsPeak & mask;
-				GetIRenderer()->Draw2dLabel(renderMarginX, renderMarginY + i * lineSize, fontSize, fColor, false,
+				IRenderAuxText::Draw2dLabel(renderMarginX, renderMarginY + i * lineSize, fontSize, fColor, false,
 				  "%s %.2fms/%d (peak %.2fms/%d)", pInfos[j].pName, gEnv->pTimer->TicksToSeconds(pInfos[j].nTicks) * 1000.0f, pInfos[j].nCalls,
 				  gEnv->pTimer->TicksToSeconds(pInfos[j].nTicksPeak) * 1000.0f, pInfos[j].nCallsPeak);
 				pInfos[j].peakAge = pInfos[j].peakAge + 1 & ~mask;
@@ -421,7 +414,7 @@ void CSystem::RenderPhysicsStatistics(IPhysicalWorld* pWorld)
 				float time     = gEnv->pTimer->TicksToSeconds(pInfos[j].nTicksAvg) * 1000.0f;
 				float timeNorm = time * (1.0f / 32);
 				fColor[1] = fColor[2] = 1.0f - (max(0.7f, min(1.0f, timeNorm)) - 0.7f) * (1.0f / 0.3f);
-				GetIRenderer()->Draw2dLabel(renderMarginX, renderMarginY + i * lineSize, fontSize, fColor, false,
+				IRenderAuxText::Draw2dLabel(renderMarginX, renderMarginY + i * lineSize, fontSize, fColor, false,
 				  "%s %.2fms/%d (peak %.2fms/%d)", pInfos[j].pName, time, pInfos[j].nCallsLast,
 				  gEnv->pTimer->TicksToSeconds(pInfos[j].nTicksPeak) * 1000.0f, pInfos[j].nCallsPeak);
 				pInfos[j].peakAge = pInfos[j].peakAge + 1 & ~mask;
@@ -611,7 +604,7 @@ void CSystem::DisplayErrorMessage(const char* acMessage,
 //! Host application (Editor) doesn't employ the Render cycle in ISystem,
 //! it may call this method to render the essential statistics
 //////////////////////////////////////////////////////////////////////////
-void CSystem::RenderStatistics ()
+void CSystem::RenderStatistics()
 {
 	RenderStats();
 #if defined(USE_FRAME_PROFILER)
@@ -708,28 +701,13 @@ void CSystem::Render()
 	if (!m_pProcess)
 		return; //should never happen
 
-	if (m_bDedicatedServer)
-	{
-#if !defined(_RELEASE)
-		if (m_env.pAISystem)
-			m_env.pAISystem->DebugDraw();
-#endif
-		return;
-	}
-
-	//check if the game is in pause or
-	//in menu mode
-	//bool bPause=false;
-	//if (m_pProcess->GetFlags() & PROC_MENU)
-	//	bPause=true;
-
 	FUNCTION_PROFILER(GetISystem(), PROFILE_SYSTEM);
 
 	//////////////////////////////////////////////////////////////////////
 	//draw
 	m_env.p3DEngine->PreWorldStreamUpdate(m_ViewCamera);
 
-	if (m_pProcess)
+	if (m_pProcess && !m_bDedicatedServer)
 	{
 		if (m_pProcess->GetFlags() & PROC_3DENGINE)
 		{
@@ -743,8 +721,8 @@ void CSystem::Render()
 
 				if (m_env.p3DEngine && !m_env.IsFMVPlaying())
 				{
-					if (!IsEquivalent(m_ViewCamera.GetPosition(), Vec3(0, 0, 0), VEC_EPSILON) ||       // never pass undefined camera to p3DEngine->RenderWorld()
-					  gEnv->IsDedicated() || (gEnv->pRenderer && gEnv->pRenderer->IsPost3DRendererEnabled()))
+					if ((!IsEquivalent(m_ViewCamera.GetPosition(), Vec3(0, 0, 0), VEC_EPSILON) && (!IsLoading())) || // never pass undefined camera to p3DEngine->RenderWorld()
+					    gEnv->IsDedicated() || (gEnv->pRenderer && gEnv->pRenderer->IsPost3DRendererEnabled()))
 					{
 						GetIRenderer()->SetViewport(0, 0, GetIRenderer()->GetWidth(), GetIRenderer()->GetHeight());
 						m_env.p3DEngine->RenderWorld(SHDF_ALLOW_WATER | SHDF_ALLOWPOSTPROCESS | SHDF_ALLOWHDR | SHDF_ZPASS | SHDF_ALLOW_AO, SRenderingPassInfo::CreateGeneralPassRenderingInfo(m_ViewCamera), __FUNCTION__);
@@ -790,8 +768,10 @@ void CSystem::Render()
 #if !defined (_RELEASE) && CRY_PLATFORM_DURANGO
 	RenderPhysicsHelpers();
 #endif
-
-	gEnv->pRenderer->SwitchToNativeResolutionBackbuffer();
+	if (gEnv->pRenderer)
+	{
+		gEnv->pRenderer->SwitchToNativeResolutionBackbuffer();
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -853,16 +833,9 @@ void CSystem::RenderStats()
 		++itnext;
 		SErrorMessage& message = *it;
 
-		SDrawTextInfo ti;
-		ti.flags = eDrawText_FixedSize | eDrawText_2D | eDrawText_Monospace;
-		memcpy(ti.color, message.m_Color, 4 * sizeof(float));
-		ti.xscale = ti.yscale = 1.4f;
-		m_env.pRenderer->DrawTextQueued(Vec3(fTextPosX, fTextPosY += fTextStepY, 1.0f), ti, message.m_Message.c_str());
+		IRenderAuxText::DrawText(Vec3(fTextPosX, fTextPosY += fTextStepY, 1.0f), 1.4f, message.m_Color, eDrawText_FixedSize | eDrawText_2D | eDrawText_Monospace, message.m_Message.c_str());
 
-		if (!IsLoading())
-		{
-			message.m_fTimeToShow -= fFrameTime;
-		}
+		message.m_fTimeToShow -= fFrameTime;
 
 		if (message.m_HardFailure)
 			m_bHasRenderedErrorMessage = true;
@@ -898,7 +871,7 @@ void CSystem::RenderStats()
 #if defined(ENABLE_LW_PROFILERS)
 		if (m_rDisplayInfo->GetIVal() == 2)
 		{
-			m_env.pRenderer->TextToScreen(nTextPosX, nTextPosY += nTextStepY, "SysMem %.1f mb",
+			IRenderAuxText::TextToScreenF(nTextPosX, nTextPosY += nTextStepY, "SysMem %.1f mb",
 			  float(DumpMMStats(false)) / 1024.f);
 
 			//if (m_env.pAudioSystem)
@@ -1017,15 +990,15 @@ void CSystem::RenderThreadInfo()
 		ColorF col2   = Col_Red;
 
 		for (int i = 0; i < maxCPU; ++i)
-			gEnv->pRenderer->Draw2dLabel(nX + i * dX, nY, fFSize, i < maxAvailCPU ? &col1.r : &col2.r, false, "%i", i + 1);
+			IRenderAuxText::Draw2dLabel(nX + i * dX, nY, fFSize, i < maxAvailCPU ? &col1.r : &col2.r, false, "%i", i + 1);
 
 		nY += dY;
 		for (std::multimap<DWORD, SThreadProcessorInfo>::const_iterator it = sortetThreads.begin(); it != sortetThreads.end(); ++it)
 		{
 			for (int i = 0; i < maxCPU; ++i)
-				gEnv->pRenderer->Draw2dLabel(nX + i * dX, nY, fFSize, i < maxAvailCPU ? &col1.r : &col2.r, false, "%s", it->first & BIT(i) ? "X" : "-");
+				IRenderAuxText::Draw2dLabel(nX + i * dX, nY, fFSize, i < maxAvailCPU ? &col1.r : &col2.r, false, "%s", it->first & BIT(i) ? "X" : "-");
 
-			gEnv->pRenderer->Draw2dLabel(nX + dX * maxCPU, nY, fFSize, &col1.r, false, "Thread: %s (0x%X)", it->second.name.c_str(), it->second.id);
+			IRenderAuxText::Draw2dLabel(nX + dX * maxCPU, nY, fFSize, &col1.r, false, "Thread: %s (0x%X)", it->second.name.c_str(), it->second.id);
 			nY += dY;
 		}
 	}

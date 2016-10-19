@@ -12,7 +12,7 @@
 #include "AudioSystemPanel.h"
 #include "AudioSystemModel.h"
 #include "QConnectionsModel.h"
-
+#include "Undo/IUndoObject.h"
 #include <QDropEvent>
 #include <QEvent>
 #include <QMimeData>
@@ -93,11 +93,11 @@ QConnectionsWidget::QConnectionsWidget(QWidget* pParent)
 
 	CAudioControlsEditorPlugin::GetATLModel()->AddListener(this);
 
-	CAudioControlsEditorPlugin::GetImplementationManger()->signalImplementationAboutToChange.Connect(std::function<void()>([&]()
+	CAudioControlsEditorPlugin::GetImplementationManger()->signalImplementationAboutToChange.Connect([&]()
 		{
 			m_pConnectionsView->selectionModel()->clear();
 			RefreshConnectionProperties();
-	  }));
+	  });
 
 }
 

@@ -16,7 +16,6 @@
 #include <CryScriptSystem/IScriptSystem.h>
 #include <CryAnimation/ICryAnimation.h>
 #include <CryCore/Platform/CryLibrary.h>
-#include <CryGame/IGame.h>
 #include <CryGame/IGameFramework.h>
 #include <CryCore/Platform/IPlatformOS.h>
 #include <CryString/StringUtils.h>
@@ -100,7 +99,10 @@ const char* g_szModuleGroups[][2] = {
 	{ "CryAnimation.dll",    g_szGroupCore },
 	{ "CryRenderD3D9.dll",   g_szGroupCore },
 	{ "CryRenderD3D10.dll",  g_szGroupCore },
-	{ "CryRenderOGL.dll",    g_szGroupCore },
+	{ "CryRenderD3D11.dll",  g_szGroupCore },
+	{ "CryRenderD3D12.dll",  g_szGroupCore },
+	{ "CryRenderOpenGL.dll", g_szGroupCore },
+	{ "CryRenderVulkan.dll", g_szGroupCore },
 	{ "CryRenderNULL.dll",   g_szGroupCore }
 };
 
@@ -483,20 +485,18 @@ void CSystem::CollectMemStats(ICrySizer* pSizer, MemStatsPurposeEnum nPurpose, s
 
 	}
 
-	if (m_env.pGame)
+	if (m_env.pGameFramework)
 	{
 		{
-			SIZER_COMPONENT_NAME(pSizer, "Game");
+			SIZER_COMPONENT_NAME(pSizer, "GameFramework");
 			{
 				SIZER_COMPONENT_NAME(pSizer, "$Allocations waste");
-				const char* szGameDllName = gEnv->pConsole->GetCVar("sys_dll_game")->GetString();
-				const SmallModuleInfo* info = FindModuleInfo(stats, szGameDllName);
+				const SmallModuleInfo* info = FindModuleInfo(stats, "CryAction.dll");
 				if (info)
 					pSizer->AddObject(info, info->memInfo.allocated - info->memInfo.requested);
 			}
 
-			m_env.pGame->GetMemoryStatistics(pSizer);
-			m_env.pGame->GetIGameFramework()->GetMemoryUsage(pSizer);
+			m_env.pGameFramework->GetMemoryUsage(pSizer);
 		}
 	}
 
@@ -1152,9 +1152,6 @@ void CSystem::FatalError(const char* format, ...)
 		if (pLoadingProfilerCallstack[0])
 			CryLogAlways("<CrySystem> LoadingProfilerCallstack: %s", pLoadingProfilerCallstack);
 
-	if (GetUserCallback())
-		GetUserCallback()->OnError(szBuffer);
-
 	assert(szBuffer[0] >= ' ');
 	//	strcpy(szBuffer,szBuffer+1);	// remove verbosity tag since it is not supported by ::MessageBox
 
@@ -1165,19 +1162,6 @@ void CSystem::FatalError(const char* format, ...)
 	OutputDebugString(szBuffer);
 #if CRY_PLATFORM_WINDOWS
 	OnFatalError(szBuffer);
-	if (!g_cvars.sys_no_crash_dialog)
-	{
-		ICVar* pFullscreen = (gEnv && gEnv->pConsole) ? gEnv->pConsole->GetCVar("r_Fullscreen") : 0;
-		if (pFullscreen && pFullscreen->GetIVal() != 0 && gEnv->pRenderer && gEnv->pRenderer->GetHWND())
-		{
-			::ShowWindow((HWND)gEnv->pRenderer->GetHWND(), SW_MINIMIZE);
-		}
-		::MessageBox(NULL, szBuffer, "CryEngine Error", MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
-	}
-
-	// Dump callstack.
-#endif
-#if CRY_PLATFORM_WINDOWS
 	//Triggers a fatal error, so the DebugCallstack can create the error.log and terminate the application
 	IDebugCallStack::instance()->FatalError(szBuffer);
 #endif

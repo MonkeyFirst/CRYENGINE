@@ -262,7 +262,7 @@ void CGameRulesSPDamageHandling::DrawFakeHits(float frameTime)
 	if (highestAlpha > 0.001f)
 	{
 		float color[4] = { 0.85f, 0.0f, 0.0f, std::min(highestAlpha, 1.0f) };
-		gEnv->pRenderer->Draw2dLabel(1024.0f * 0.5f, 500.0f, 2.45f, color, true, "FAKE HIT!");
+		IRenderAuxText::Draw2dLabel(1024.0f * 0.5f, 500.0f, 2.45f, color, true, "FAKE HIT!");
 	}
 }
 #endif
@@ -452,7 +452,7 @@ bool CGameRulesSPDamageHandling::SvOnHitScaled(const HitInfo& hitInfo)
 					if (aiActor && shooter != pVictimEntity && !aiActor->CanDamageTarget(pVictimEntity->GetAI()))
 					{
 #ifndef _RELEASE
-						if (pVictimEntity->GetId() == gEnv->pGame->GetIGameFramework()->GetClientActorId())
+						if (pVictimEntity->GetId() == gEnv->pGameFramework->GetClientActorId())
 							m_fakeHits.push_back(FakeHitDebug(gEnv->pTimer->GetFrameStartTime()));
 #endif
 						modifiedHitInfo.damage = 1.0f;

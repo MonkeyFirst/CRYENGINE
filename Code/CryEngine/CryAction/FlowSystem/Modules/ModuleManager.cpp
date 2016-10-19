@@ -39,10 +39,10 @@ CFlowGraphModuleManager::CFlowGraphModuleManager()
 	fg_debugmodules_filter = REGISTER_STRING("fg_debugmodules_filter", "", VF_NULL, "Only debug modules with this name");
 
 #if !defined (_RELEASE)
-	CRY_ASSERT_MESSAGE(gEnv->pGame->GetIGameFramework(), "Unable to register as Framework listener!");
-	if (gEnv->pGame->GetIGameFramework())
+	CRY_ASSERT_MESSAGE(gEnv->pGameFramework, "Unable to register as Framework listener!");
+	if (gEnv->pGameFramework)
 	{
-		gEnv->pGame->GetIGameFramework()->RegisterListener(this, "FlowGraphModuleManager", FRAMEWORKLISTENERPRIORITY_GAME);
+		gEnv->pGameFramework->RegisterListener(this, "FlowGraphModuleManager", FRAMEWORKLISTENERPRIORITY_GAME);
 	}
 #endif
 }
@@ -56,9 +56,9 @@ CFlowGraphModuleManager::~CFlowGraphModuleManager()
 	gEnv->pConsole->UnregisterVariable("fg_debugmodules_filter", true);
 
 #if !defined (_RELEASE)
-	if (gEnv->pGame && gEnv->pGame->GetIGameFramework())
+	if (gEnv->pGameFramework)
 	{
-		gEnv->pGame->GetIGameFramework()->UnregisterListener(this);
+		gEnv->pGameFramework->UnregisterListener(this);
 	}
 #endif
 }
@@ -311,7 +311,7 @@ void CFlowGraphModuleManager::OnSystemEvent(ESystemEvent event, UINT_PTR wparam,
 		break;
 	case ESYSTEM_EVENT_LEVEL_UNLOAD:
 		{
-			if (gEnv->pGame->GetIGameFramework()->GetILevelSystem()->IsLevelLoaded())
+			if (gEnv->pGameFramework->GetILevelSystem()->IsLevelLoaded())
 				ClearModules();
 		}
 		break;
@@ -493,12 +493,12 @@ void CFlowGraphModuleManager::RescanModuleNames(bool bGlobal)
 		{
 			char* levelName;
 			char* levelPath;
-			gEnv->pGame->GetIGameFramework()->GetEditorLevel(&levelName, &levelPath);
+			gEnv->pGameFramework->GetEditorLevel(&levelName, &levelPath);
 			path = levelPath;
 		}
 		else
 		{
-			ILevelInfo* pLevel = gEnv->pGame->GetIGameFramework()->GetILevelSystem()->GetCurrentLevel();
+			ILevelInfo* pLevel = gEnv->pGameFramework->GetILevelSystem()->GetCurrentLevel();
 			if (pLevel)
 			{
 				path = pLevel->GetPath();
@@ -684,17 +684,7 @@ void CFlowGraphModuleManager::DestroyActiveModuleInstances()
 #if !defined (_RELEASE)
 void DrawModule2dLabel(float x, float y, float fontSize, const float* pColor, const char* pText)
 {
-	SDrawTextInfo ti;
-	ti.xscale = ti.yscale = fontSize;
-	ti.flags = eDrawText_2D | eDrawText_800x600 | eDrawText_FixedSize | eDrawText_Monospace;
-	if (pColor)
-	{
-		ti.color[0] = pColor[0];
-		ti.color[1] = pColor[1];
-		ti.color[2] = pColor[2];
-		ti.color[3] = pColor[3];
-	}
-	gEnv->pRenderer->DrawTextQueued(Vec3(x, y, 0.5f), ti, pText);
+	IRenderAuxText::DrawText(Vec3(x, y, 0.5f), fontSize, pColor, eDrawText_2D | eDrawText_800x600 | eDrawText_FixedSize | eDrawText_Monospace, pText);
 }
 
 void DrawModuleTextLabel(float x, float y, const float* pColor, const char* pFormat, ...)

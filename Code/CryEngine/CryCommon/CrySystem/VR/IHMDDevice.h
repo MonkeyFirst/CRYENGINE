@@ -4,26 +4,14 @@
 
 #include <CryInput/IInput.h>
 
+#include <CryMath/Cry_Geo.h>
+
+// TODO: Remove when full VR device implementation (incl. renderer) is in plugin
 enum EHmdClass
 {
-	eHmdClass_Null,
 	eHmdClass_Oculus,
 	eHmdClass_OpenVR,
 	eHmdClass_Osvr
-};
-
-enum EHmdType
-{
-	eHmdType_Unknown,
-	// OCULUS
-	eHmdType_DK1,
-	eHmdType_DKHD,
-	eHmdType_DK2,
-	eHmdType_CB,
-	eHmdType_EVT,
-	//Osvr
-	eHmdType_HDK12,
-	eHmdType_HDK13
 };
 
 enum EHmdStatus
@@ -49,8 +37,7 @@ enum EEyeType
 struct HmdDeviceInfo
 {
 	HmdDeviceInfo()
-		: type(eHmdType_Unknown)
-		, productName(0)
+		: productName(0)
 		, manufacturer(0)
 		, screenWidth(0)
 		, screenHeight(0)
@@ -58,8 +45,6 @@ struct HmdDeviceInfo
 		, fovV(0)
 	{
 	}
-
-	EHmdType     type;
 
 	const char*  productName;
 	const char*  manufacturer;
@@ -230,6 +215,11 @@ struct IHmdDevice
 
 	//! \return Tracking state in the Hmd's local tracking space using CRYENGINE's coordinate system.
 	virtual const HmdTrackingState& GetLocalTrackingState() const = 0;
+
+	//! \return Quad (four corners) of the Play Area in which the player can move around safely. A value of zero indicates that this HMD does not handle room-scale functionality.
+	virtual Quad GetPlayArea() const = 0;
+	//! \return 2D width and height of the play area in which the player can move around safely. A value of zero indicates that this HMD does not handle room-scale functionality.
+	virtual Vec2 GetPlayAreaSize() const = 0;
 
 	virtual const IHmdController*   GetController() const = 0;
 	virtual const EHmdSocialScreen  GetSocialScreenType(bool* pKeepAspect = nullptr) const = 0;

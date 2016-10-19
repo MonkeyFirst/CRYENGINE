@@ -24,6 +24,8 @@ public:
 	virtual void Flush(SAuxGeomCBRawDataPackaged& data, size_t begin, size_t end, bool reset = false) = 0;
 	virtual void RT_Flush(SAuxGeomCBRawDataPackaged& data, size_t begin, size_t end, bool reset = false) = 0;
 
+	virtual void DrawStringImmediate(IFFont_RenderProxy* pFont, float x, float y, float z, const char* pStr, const bool asciiMultiLine, const STextDrawContext& ctx) = 0;
+
 	virtual void FlushTextMessages(CTextMessages& tMessages, bool reset) = 0;
 };
 
@@ -65,7 +67,8 @@ public:
 
 	virtual void                DrawBone(const Vec3& rParent, const Vec3& rBone, ColorB col);
 
-	virtual void                RenderText(Vec3 pos, SDrawTextInfo& ti, const char* format, va_list args);
+	virtual void                RenderTextQueued(Vec3 pos, const SDrawTextInfo& ti, const char* text);
+	virtual void                DrawStringImmediate(IFFont_RenderProxy* pFont, float x, float y, float z, const char* pStr, const bool asciiMultiLine, const STextDrawContext& ctx);
 
 	virtual int                 PushMatrix(const Matrix34&  mat);
 	virtual Matrix34*           GetMatrix();
@@ -185,12 +188,12 @@ public:
 	struct SAuxGeomCBRawData
 	{
 	public:
-		SAuxGeomCBRawData() 
+		SAuxGeomCBRawData()
 			: m_isUsed(false)
 			, m_curRenderFlags(e_Def3DPublicRenderflags)
 			, m_curTransMatIdx(-1)
 			, m_curWorldMatIdx(-1)
-			, m_uCount(0) 
+			, m_uCount(0)
 		{}
 
 		void GetSortedPushBuffer(size_t begin, size_t end, AuxSortedPushBuffer& auxSortedPushBuffer) const;
@@ -585,7 +588,7 @@ public:
 
 	virtual void                DrawBone(const Vec3& rParent, const Vec3& rBone, ColorB col)                                                                   {}
 
-	virtual void                RenderText(Vec3 pos, SDrawTextInfo& ti, const char* format, va_list args)                                                      {}
+	virtual void                RenderTextQueued(Vec3 pos, const SDrawTextInfo& ti, const char* text)                                                                      {}
 
 	virtual int                 PushMatrix(const Matrix34&  mat)                                                                                                      { return -1; }
 	virtual Matrix34*           GetMatrix()                                                                                                                    { return nullptr; }

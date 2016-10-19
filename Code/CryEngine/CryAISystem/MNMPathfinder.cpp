@@ -600,52 +600,43 @@ void CMNMPathfinder::ProcessPathRequest(MNM::PathfinderUtils::ProcessingContext&
 	return;
 }
 
-void CMNMPathfinder::ConstructPathIfWayWasFound(MNM::PathfinderUtils::ProcessingContext& processingContext)
+bool CMNMPathfinder::ConstructPathFromFoundWay(
+  const MNM::MeshGrid::WayQueryResult& way,
+  const MNM::MeshGrid& grid,
+  const OffMeshNavigationManager* pOffMeshNavigationManager,
+  const Vec3& startLocation,
+  const Vec3& endLocation,
+  CPathHolder<PathPointDescriptor>& outputPath)
 {
-	if (processingContext.status != MNM::PathfinderUtils::ProcessingContext::FindWayCompleted)
-		return;
+	const MNM::WayTriangleData* pWayData = way.GetWayData();
+	const size_t waySize = way.GetWaySize();
 
-	MNM::PathfinderUtils::ProcessingRequest& processingRequest = processingContext.processingRequest;
-
-	const NavigationMesh& mesh = gAIEnv.pNavigationSystem->GetMesh(processingRequest.meshID);
-	const MNM::MeshGrid& grid = mesh.grid;
 	const MNM::MeshGrid::Params& gridParams = grid.GetParams();
-	const OffMeshNavigationManager* offMeshNavigationManager = gAIEnv.pNavigationSystem->GetOffMeshNavigationManager();
-	assert(offMeshNavigationManager);
-
-	CPathHolder<PathPointDescriptor> outputPath;
-
-	PathPointDescriptor navPathStart(IAISystem::NAV_UNSET, processingRequest.data.requestParams.startLocation);
-	PathPointDescriptor navPathEnd(IAISystem::NAV_UNSET, processingRequest.data.requestParams.endLocation);
-
-	const MNM::vector3_t origin = MNM::vector3_t(MNM::real_t(gridParams.origin.x), MNM::real_t(gridParams.origin.y), MNM::real_t(gridParams.origin.z));
+	const MNM::vector3_t origin = MNM::vector3_t(gridParams.origin);
 
 	// NOTE: waypoints are in reverse order
-	size_t waySize = processingContext.queryResult.GetWaySize();
-	MNM::WayTriangleData* outputWay = processingContext.queryResult.GetWayData();
 	for (size_t i = 0; i < waySize; ++i)
 	{
 		// Using the edge-midpoints of adjacent triangles to build the path.
 		if (i > 0)
 		{
 			Vec3 edgeMidPoint;
-			if (grid.CalculateMidEdge(outputWay[i - 1].triangleID, outputWay[i].triangleID, edgeMidPoint))
+			if (grid.CalculateMidEdge(pWayData[i - 1].triangleID, pWayData[i].triangleID, edgeMidPoint))
 			{
 				PathPointDescriptor pathPoint(IAISystem::NAV_UNSET, edgeMidPoint + origin.GetVec3());
-				pathPoint.iTriId = outputWay[i].triangleID;
+				pathPoint.iTriId = pWayData[i].triangleID;
 				outputPath.PushFront(pathPoint);
 			}
 		}
 
-		if (outputWay[i].offMeshLinkID)
+		if (pWayData[i].offMeshLinkID)
 		{
 			// Grab off-mesh link object
-			const MNM::OffMeshLink* pOffMeshLink = offMeshNavigationManager->GetOffMeshLink(outputWay[i].offMeshLinkID);
-			if (pOffMeshLink == NULL)
+			const MNM::OffMeshLink* pOffMeshLink = pOffMeshNavigationManager->GetOffMeshLink(pWayData[i].offMeshLinkID);
+			if (pOffMeshLink == nullptr)
 			{
 				// Link can no longer be found; this path is now invalid
-				processingContext.queryResult.Clear();
-				break;
+				return false;
 			}
 
 			const bool isOffMeshLinkSmartObject = pOffMeshLink->GetLinkType() == MNM::OffMeshLink::eLinkType_SmartObject;
@@ -656,33 +647,77 @@ void CMNMPathfinder::ConstructPathIfWayWasFound(MNM::PathfinderUtils::Processing
 
 			// Add Exit point
 			pathPoint.vPos = pOffMeshLink->GetEndPosition();
+			CRY_ASSERT_MESSAGE(i > 0, "Path contains offmesh link without exit waypoint");
+			if (i > 0)
+			{
+				pathPoint.iTriId = pWayData[i - 1].triangleID;
+			}
 			outputPath.PushFront(pathPoint);
 
 			// Add Entry point
 			pathPoint.navType = type;
 			pathPoint.vPos = pOffMeshLink->GetStartPosition();
-			pathPoint.offMeshLinkData.offMeshLinkID = outputWay[i].offMeshLinkID;
-			pathPoint.iTriId = outputWay[i].triangleID;
+			pathPoint.offMeshLinkData.offMeshLinkID = pWayData[i].offMeshLinkID;
+			pathPoint.iTriId = pWayData[i].triangleID;
 			outputPath.PushFront(pathPoint);
 		}
 	}
-	const bool pathFound = (processingContext.queryResult.GetWaySize() != 0);
+
+	PathPointDescriptor navPathStart(IAISystem::NAV_UNSET, startLocation);
+	PathPointDescriptor navPathEnd(IAISystem::NAV_UNSET, endLocation);
+
+	// Assign triangleID of start and end points (waypoints are in reverse order)
+	navPathEnd.iTriId = pWayData[0].triangleID;
+	navPathStart.iTriId = pWayData[waySize - 1].triangleID;
+
+	//Insert start/end locations in the path
+	outputPath.PushBack(navPathEnd);
+	outputPath.PushFront(navPathStart);
+
+	return true;
+}
+
+void CMNMPathfinder::ConstructPathIfWayWasFound(MNM::PathfinderUtils::ProcessingContext& processingContext)
+{
+	if (processingContext.status != MNM::PathfinderUtils::ProcessingContext::FindWayCompleted)
+		return;
+
+	MNM::PathfinderUtils::ProcessingRequest& processingRequest = processingContext.processingRequest;
+
+	const NavigationMesh& mesh = gAIEnv.pNavigationSystem->GetMesh(processingRequest.meshID);
+	const MNM::MeshGrid& grid = mesh.grid;
+	const OffMeshNavigationManager* offMeshNavigationManager = gAIEnv.pNavigationSystem->GetOffMeshNavigationManager();
+	assert(offMeshNavigationManager);
+
+	const bool bPathFound = (processingContext.queryResult.GetWaySize() != 0);
+	bool bPathConstructed = false;
+	CPathHolder<PathPointDescriptor> outputPath;
+	if (bPathFound)
+	{
+		bPathConstructed = ConstructPathFromFoundWay(
+		  processingContext.queryResult,
+		  grid,
+		  offMeshNavigationManager,
+		  processingRequest.data.requestParams.startLocation,
+		  processingRequest.data.requestParams.endLocation,
+		  *&outputPath);
+
+		if (bPathConstructed)
+		{
+			if (processingRequest.data.requestParams.beautify && gAIEnv.CVars.BeautifyPath)
+			{
+				outputPath.PullPathOnNavigationMesh(grid, gAIEnv.CVars.PathStringPullingIterations);
+			}
+		}
+	}
 
 	MNM::PathfinderUtils::PathfindingCompletedEvent successEvent;
 	MNMPathRequestResult& resultData = successEvent.eventData;
-	if (pathFound)
+	if (bPathConstructed)
 	{
 		INavPathPtr navPath = resultData.pPath;
 		resultData.result = eMNMPR_Success;
 		navPath->Clear("CMNMPathfinder::ProcessPathRequest");
-		//Insert start/end locations in the path
-		outputPath.PushBack(navPathEnd);
-		outputPath.PushFront(navPathStart);
-
-		if (processingRequest.data.requestParams.beautify && gAIEnv.CVars.BeautifyPath)
-		{
-			outputPath.PullPathOnNavigationMesh(processingRequest.meshID, gAIEnv.CVars.PathStringPullingIterations, &outputWay[0], processingContext.queryResult.GetWaySize());
-		}
 
 		outputPath.FillNavPath(*navPath);
 
@@ -732,7 +767,7 @@ void CMNMPathfinder::PathRequestFailed(MNM::QueuedPathID requestID, const MNM::P
 void CMNMPathfinder::DebugAllStatistics()
 {
 	float y = 40.0f;
-	gEnv->pRenderer->Draw2dLabel(100.f, y, 1.4f, Col_White, false, "Currently we have %" PRISIZE_T " queued requests in the MNMPathfinder", m_requestedPathsQueue.size());
+	IRenderAuxText::Draw2dLabel(100.f, y, 1.4f, Col_White, false, "Currently we have %" PRISIZE_T " queued requests in the MNMPathfinder", m_requestedPathsQueue.size());
 
 	y += 100.0f;
 	const size_t maximumAmountOfSlotsToUpdate = m_processingContextsPool.GetMaxSlots();
@@ -762,5 +797,5 @@ void CMNMPathfinder::DebugStatistics(MNM::PathfinderUtils::ProcessingContext& pr
 	  stats.averageSearchTime,
 	  stats.peakSearchTime);
 
-	gEnv->pRenderer->Draw2dLabel(100.f, textY, 1.4f, Col_White, false, "%s", text.c_str());
+	IRenderAuxText::Draw2dLabel(100.f, textY, 1.4f, Col_White, false, "%s", text.c_str());
 }

@@ -8,7 +8,7 @@
 #define UInt64 UInt64_NoOverwrite
 #include <lzss/LZSS.H>
 #include <lzma/Lzma86.h>
-static_assert(sizeof(uint32) == 4 && sizeof(uint64) == 8, "Bad type sizes");
+static_assert(sizeof(UInt32) == 4 && sizeof(UInt64) == 8, "Bad type sizes");
 #undef  UInt32
 #undef  UInt64
 

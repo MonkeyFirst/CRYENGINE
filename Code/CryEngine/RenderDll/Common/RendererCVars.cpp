@@ -249,7 +249,6 @@ float CRendererCVars::CV_r_ShadowsParticleNormalEffect;
 AllocateConstIntCVar(CRendererCVars, CV_r_ShadowGenMode);
 
 AllocateConstIntCVar(CRendererCVars, CV_r_ShadowsUseClipVolume);
-int CRendererCVars::CV_r_shadowblur;
 AllocateConstIntCVar(CRendererCVars, CV_r_shadowtexformat);
 AllocateConstIntCVar(CRendererCVars, CV_r_ShadowsMaskResolution);
 AllocateConstIntCVar(CRendererCVars, CV_r_ShadowsMaskDownScale);
@@ -284,6 +283,8 @@ float CRendererCVars::CV_r_imposterratio;
 int CRendererCVars::CV_r_impostersupdateperframe;
 AllocateConstIntCVar(CRendererCVars, CV_r_shaderslazyunload);
 AllocateConstIntCVar(CRendererCVars, CV_r_shadersdebug);
+AllocateConstIntCVar(CRendererCVars, CV_r_shadersCompileStrict);
+AllocateConstIntCVar(CRendererCVars, CV_r_shadersCompileCompatible);
 #if CRY_PLATFORM_DESKTOP
 int CRendererCVars::CV_r_shadersorbis;
 int CRendererCVars::CV_r_shadersdurango;
@@ -1130,7 +1131,7 @@ void CRendererCVars::InitCVars()
 	               "  1: Use new graphics pipeline with objects compiled on the fly\n"
 	               "  2: Use new graphics pipeline with permanent render objects");
 
-	REGISTER_CVAR3("r_DeferredShadingTiled", CV_r_DeferredShadingTiled, 0, VF_DUMPTODISK,
+	REGISTER_CVAR3("r_DeferredShadingTiled", CV_r_DeferredShadingTiled, 3, VF_DUMPTODISK,
 	               "Toggles tile based shading.\n"
 								 "0 - Off"
 	               "1 - Tiled forward shading for transparent objects\n"
@@ -1763,10 +1764,6 @@ void CRendererCVars::InitCVars()
 	DefineConstIntCVar3("r_ShadowsUseClipVolume", CV_r_ShadowsUseClipVolume, SHADOWS_CLIP_VOL_DEFAULT_VAL, VF_DUMPTODISK,
 	                    ".\n"
 	                    "Usage: r_ShadowsUseClipVolume [0=Disable/1=Enable");
-
-	REGISTER_CVAR3("r_ShadowBlur", CV_r_shadowblur, SHADOWS_BLUR_DEFAULT_VAL, VF_DUMPTODISK,
-	               "Selected shadow map screenspace blurring technique.\n"
-	               "Usage: r_ShadowBlur [0=no blurring(fastest)/1=blur/2=blur/3=blur without leaking(slower)]");
 
 	DefineConstIntCVar3("r_ShadowTexFormat", CV_r_shadowtexformat, 0, VF_NULL,
 	                    "0=use D32 texture format for depth map\n"
@@ -2409,6 +2406,8 @@ void CRendererCVars::InitCVars()
 
 	DefineConstIntCVar3("r_ShadersIgnoreIncludesChanging", CV_r_shadersignoreincludeschanging, 0, VF_NULL, "");
 	DefineConstIntCVar3("r_ShadersLazyUnload", CV_r_shaderslazyunload, 0, VF_NULL, "");
+	DefineConstIntCVar3("r_ShadersCompileStrict", CV_r_shadersCompileStrict, 0, VF_NULL, "");
+	DefineConstIntCVar3("r_ShadersCompileCompatible", CV_r_shadersCompileCompatible, 1, VF_NULL, "");
 
 	REGISTER_CVAR3_CB("r_ShadersAllowCompilation", CV_r_shadersAllowCompilation, SHADERS_ALLOW_COMPILATION_DEFAULT_VAL, VF_NULL, "", OnChange_CV_r_ShadersAllowCompiliation);
 
@@ -2936,12 +2935,6 @@ void CRendererCVars::InitCVars()
 	               " 1: Enable multi-GPU for dual rendering\n"
 	               "-1: Enable multi-GPU for dual rendering, but run on only one GPU (simulation)\n");
 
-#if defined(INCLUDE_OCULUS_SDK) || defined(INCLUDE_OPENVR_SDK) || defined(INCLUDE_OSVR_SDK)
-	#define VRDEVICE_STEREO_OUTPUT_INFO "7: VR Device (Oculus/Vive/HDK/Playstation VR)\n"
-#else
-	#define VRDEVICE_STEREO_OUTPUT_INFO
-#endif
-
 	REGISTER_CVAR3("r_StereoOutput", CV_r_StereoOutput, 0, VF_DUMPTODISK,
 	               "Sets stereo output. Output depends on the stereo monitor\n"
 	               "Usage: r_StereoOutput [0=off/1/2/3/4/5/6/...]\n"
@@ -2952,7 +2945,7 @@ void CRendererCVars::InitCVars()
 	               "4: Side by Side\n"
 	               "5: Line by Line (Interlaced)\n"
 	               "6: Anaglyph\n"
-	               VRDEVICE_STEREO_OUTPUT_INFO
+		           "7: VR Device\n"
 	               );
 
 #undef VRDEVICE_STEREO_OUTPUT_INFO

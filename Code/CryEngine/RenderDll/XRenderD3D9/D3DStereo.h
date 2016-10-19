@@ -110,6 +110,8 @@ public:
 	// This is called from the render thread
 	void TryInjectHmdCameraAsync(CRenderView* pRenderView);
 
+	CTexture* WrapD3DRenderTarget(D3DTexture* d3dTexture, uint32 width, uint32 height, ETEX_Format format, const char* name, bool shaderResourceView);
+
 public:
 	// IStereoRenderer Interface
 	virtual EStereoDevice      GetDevice();
@@ -190,7 +192,6 @@ private:
 	void          DisableStereo();
 	void          ChangeOutputFormat();
 	void          HandleNVControl();
-	bool          InitializeHmdRenderer();
 	void          ShutdownHmdRenderer();
 
 	void          RenderScene(int sceneFlags, const SRenderingPassInfo& passInfo);
@@ -206,7 +207,7 @@ private:
 
 	bool          IsDriver(DriverType driver) { return m_device == STEREO_DEVICE_DRIVER && m_driver == driver; }
 
-	IHmdRenderer* CreateHmdRenderer(EStereoOutput stereoOutput, struct IHmdDevice* pDevice, CD3D9Renderer* pRenderer, CD3DStereoRenderer* pStereoRenderer);
+	IHmdRenderer* CreateHmdRenderer(struct IHmdDevice& device, CD3D9Renderer* pRenderer, CD3DStereoRenderer* pStereoRenderer);
 };
 
 #endif
