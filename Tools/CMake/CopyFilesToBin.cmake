@@ -1,42 +1,47 @@
 # Copy required additional files from 3rdparty to the binary folder
-set(DEPLOY_FILES "" CACHE STRING "List of files to deploy before running")
+set(DEPLOY_FILES  CACHE INTERNAL "List of files to deploy before running")
 
 set (BinaryFileList_Win64
-	Code/SDKs/XT_13_4/bin_vc14/*.dll
-	Code/SDKs/Mono/bin/x64/mono-2.0.dll
+	${CryEngine_DIR}/Code/SDKs/XT_13_4/bin_vc14/*.dll
+	${CryEngine_DIR}/Code/SDKs/Mono/bin/x64/mono-2.0.dll
 
-	Code/SDKs/Brofiler/ProfilerCore64.dll
+	${CryEngine_DIR}/Code/SDKs/Brofiler/ProfilerCore64.dll
 
-	Code/SDKs/audio/oculus/wwise/bin/plugins/OculusSpatializer.dll
+	${CryEngine_DIR}/Code/SDKs/audio/oculus/wwise/bin/plugins/OculusSpatializer.dll
 
-	Code/SDKs/OpenVR/bin/win64/*.*
+	${CryEngine_DIR}/Code/SDKs/OpenVR/bin/win64/*.*
 
-	Code/SDKs/OSVR/dll/*.dll
+	${CryEngine_DIR}/Code/SDKs/OSVR/dll/*.dll
 
-	Code/SDKs/Qt/5.6/msvc2015_64/bin/*.dll
+	${CryEngine_DIR}/Code/SDKs/Qt/5.6/msvc2015_64/bin/*.dll
 
-	"Code/SDKs/Microsoft Windows SDK/10/Debuggers/x64/dbghelp.dll"
-	"Code/SDKs/Microsoft Windows SDK/10/bin/x64/d3dcompiler_47.dll"
+	"${CryEngine_DIR}/Code/SDKs/Microsoft Windows SDK/10/Debuggers/x64/dbghelp.dll"
+	"${CryEngine_DIR}/Code/SDKs/Microsoft Windows SDK/10/bin/x64/d3dcompiler_47.dll"
+
+	${SDK_DIR}/CrashRpt/1403/bin/x64/CrashSender1403.exe
+	${SDK_DIR}/CrashRpt/1403/bin/x64/crashrpt_lang.ini
+
 	)
 
 set (BinaryFileList_Win32
-	Code/SDKs/Brofiler/ProfilerCore32.dll
-	Code/SDKs/Mono/bin/x86/mono-2.0.dll
-	"Code/SDKs/Microsoft Windows SDK/10/Debuggers/x86/dbghelp.dll"
-	"Code/SDKs/Microsoft Windows SDK/10/bin/x86/d3dcompiler_47.dll"
+	${CryEngine_DIR}/Code/SDKs/Brofiler/ProfilerCore32.dll
+	${CryEngine_DIR}/Code/SDKs/Mono/bin/x86/mono-2.0.dll
+	"${CryEngine_DIR}/Code/SDKs/Microsoft Windows SDK/10/Debuggers/x86/dbghelp.dll"
+	"${CryEngine_DIR}/Code/SDKs/Microsoft Windows SDK/10/bin/x86/d3dcompiler_47.dll"
+
+	${SDK_DIR}/CrashRpt/1403/bin/CrashSender1403.exe
+	${SDK_DIR}/CrashRpt/1403/bin/crashrpt_lang.ini
+
 	)
 
 set (BinaryFileList_LINUX64
-	Code/SDKs/ncurses/lib/libncursesw.so.6
+	${CryEngine_DIR}/Code/SDKs/ncurses/lib/libncursesw.so.6
 	)
 
 macro(deploy_runtime_file source destination)
-	add_custom_command(OUTPUT ${destination} 
-		COMMAND ${CMAKE_COMMAND} -DSOURCE=${source} -DDESTINATION=${destination} -P ${CMAKE_SOURCE_DIR}/Tools/CMake/deploy_runtime_files.cmake
-		COMMENT "Deploying ${source}"
-		DEPENDS ${source})
-
+	list(APPEND DEPLOY_FILES ${source})
 	list(APPEND DEPLOY_FILES ${destination})
+	set(DEPLOY_FILES "${DEPLOY_FILES}" CACHE INTERNAL "List of files to deploy before running")
 endmacro()
 
 macro(deploy_runtime_files fileexpr)
@@ -73,22 +78,45 @@ macro(copy_binary_files_to_target)
 	deploy_runtime_files("${BINARY_FILE_LIST}")
 
 	if (ORBIS)
-		deploy_runtime_files(Code/SDKs/Orbis/target/sce_module/*.prx app/sce_module)
+		deploy_runtime_files(${CryEngine_DIR}/Code/SDKs/Orbis/target/sce_module/*.prx app/sce_module)
 	endif()
 
 	if (WIN64) 
-		deploy_runtime_files(Code/SDKs/Qt/5.6/msvc2015_64/plugins/platforms/*.dll platforms)
-		deploy_runtime_files(Code/SDKs/Qt/5.6/msvc2015_64/plugins/imageformats/*.dll imageformats)
+		deploy_runtime_files(${CryEngine_DIR}/Code/SDKs/Qt/5.6/msvc2015_64/plugins/platforms/*.dll platforms)
+		deploy_runtime_files(${CryEngine_DIR}/Code/SDKs/Qt/5.6/msvc2015_64/plugins/imageformats/*.dll imageformats)
 
-		deploy_runtime_files("Code/SDKs/Microsoft Visual Studio Compiler/14.0/redist/x64/**/*.dll")
+		deploy_runtime_files("${CryEngine_DIR}/Code/SDKs/Microsoft Visual Studio Compiler/14.0/redist/x64/**/*.dll")
 	elseif(WIN32)
-		deploy_runtime_files("Code/SDKs/Microsoft Visual Studio Compiler/14.0/redist/x86/**/*.dll")
+		deploy_runtime_files("${CryEngine_DIR}/Code/SDKs/Microsoft Visual Studio Compiler/14.0/redist/x86/**/*.dll")
 	endif ()
 
 	if(WIN32 AND OPTION_CRYMONO)
 		# Deploy mono runtime
+		# This does not work as intended if CryEngine_DIR is not equal to CMAKE_SOURCE_DIR and should be rethought
 		deploy_runtime_dir(Code/SDKs/Mono ../../Engine/Mono)
 	endif()
 
-	add_custom_target(deployrt ALL DEPENDS ${DEPLOY_FILES})
+	if(DEPLOY_FILES)
+		set(DEPLOY_DESTINATIONS)
+
+		list(LENGTH DEPLOY_FILES deployFilesCount)
+		math(EXPR idxRangeEnd "${deployFilesCount} - 1")
+
+		foreach(idx RANGE 0 ${idxRangeEnd} 2)
+			math(EXPR idxIncr "${idx} + 1")
+			list(GET DEPLOY_FILES ${idx} source)
+			list(GET DEPLOY_FILES ${idxIncr} destination)
+
+			add_custom_command(OUTPUT ${destination} 
+				COMMAND ${CMAKE_COMMAND} -DSOURCE=${source} -DDESTINATION=${destination} -P ${CryEngine_DIR}/Tools/CMake/deploy_runtime_files.cmake
+				COMMENT "Deploying ${source}"
+				DEPENDS ${source})
+
+			list(APPEND DEPLOY_DESTINATIONS ${destination})
+		endforeach(idx)
+
+		add_custom_target(deployrt ALL DEPENDS ${DEPLOY_DESTINATIONS})
+	endif()
 endmacro()
+
+

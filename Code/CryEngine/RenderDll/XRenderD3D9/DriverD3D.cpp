@@ -1108,7 +1108,6 @@ void CD3D9Renderer::PostMeasureOverdraw()
 			//WriteXY(nX+10, nY+10, 1, 1,  1,1,1,1, "-- 10 instructions --");
 		}
 		Set2DMode(false, 1, 1);
-		RT_FlushTextMessages();
 	}
 #endif //_RELEASE
 }
@@ -1138,8 +1137,6 @@ void CD3D9Renderer::DrawTexelsPerMeterInfo()
 		IRenderAuxText::Draw2dLabel(x - 2, y - 20, 1.2f, color, false, "0");
 		IRenderAuxText::Draw2dLabel(x + w / 2 - 5, y - 20, 1.2f, color, false, "%.0f", CV_r_TexelsPerMeter);
 		IRenderAuxText::Draw2dLabel(x + w - 50, y - 20, 1.2f, color, false, ">= %.0f", CV_r_TexelsPerMeter * 2.0f);
-
-		RT_FlushTextMessages();
 	}
 #endif
 }
@@ -4122,16 +4119,6 @@ void CD3D9Renderer::RT_EndFrame()
 	//cry_sprintf(str, "Frame: %d", m_RP.m_TI[m_RP.m_nProcessThreadID].m_nFrameUpdateID);
 	//PrintToScreen(5,50, 16, str);
 
-	if (!IsRecursiveRenderView())
-	{
-		if (gEnv->pConsole)
-		{
-			//PROFILE_LABEL_PUSH_SKIP_GPU("Text");
-			RT_FlushTextMessages();
-			//PROFILE_LABEL_POP_SKIP_GPU("Text");
-		}
-	}
-
 	//PROFILE_LABEL_POP_SKIP_GPU("Frame");
 
 	if (gEnv && gEnv->pHardwareMouse)
@@ -4146,6 +4133,16 @@ void CD3D9Renderer::RT_EndFrame()
 	if (m_pPipelineProfiler && !bProfilerOnSocialScreen)
 		m_pPipelineProfiler->EndFrame();
 
+#if defined(ENABLE_RENDER_AUX_GEOM)
+	if( m_pRenderAuxGeomD3D )
+	{
+		if( CAuxGeomCB* aux = m_pRenderAuxGeomD3D->GetRenderAuxGeom() )
+		{
+			aux->Flush(true);
+		}
+	}
+#endif
+
 	GetS3DRend().DisplayStereo();
 
 	CTimeValue timePresentBegin = iTimer->GetAsyncTime();
@@ -4153,6 +4150,16 @@ void CD3D9Renderer::RT_EndFrame()
 
 	if (m_pPipelineProfiler && bProfilerOnSocialScreen)
 		m_pPipelineProfiler->EndFrame();
+
+#if defined(ENABLE_RENDER_AUX_GEOM)
+	if( m_pRenderAuxGeomD3D )
+	{
+		if( CAuxGeomCB* aux = m_pRenderAuxGeomD3D->GetRenderAuxGeom() )
+		{
+			aux->Flush(true);
+		}
+	}
+#endif
 
 #ifdef DO_RENDERLOG
 	if (CRenderer::CV_r_log)
@@ -7149,7 +7156,7 @@ void CD3D9Renderer::GetLogVBuffers()
 		string final;
 		char tmp[128];
 
-		COMPILE_TIME_ASSERT(CRY_ARRAY_COUNT(sStreamNames) == VSF_NUM);
+		static_assert(CRY_ARRAY_COUNT(sStreamNames) == VSF_NUM, "Invalid array size!");
 		for (int i = 0; i < VSF_NUM; i++)
 		{
 			int nSize = iter->item<& CRenderMesh::m_Chain>()->GetStreamStride(i);

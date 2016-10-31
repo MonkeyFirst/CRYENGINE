@@ -113,7 +113,7 @@ macro(set_solution_folder folder target)
 endmacro()
 
 MACRO(SET_PLATFORM_TARGET_PROPERTIES TargetProject)
-	target_compile_definitions( ${THIS_PROJECT} PRIVATE "-DCODE_BASE_FOLDER=\"${CMAKE_SOURCE_DIR}/Code/\"")
+	target_compile_definitions( ${THIS_PROJECT} PRIVATE "-DCODE_BASE_FOLDER=\"${CryEngine_DIR}/Code/\"")
 	target_link_libraries( ${THIS_PROJECT} PRIVATE ${COMMON_LIBS} )
 	IF(DURANGO)
 		set_target_properties_for_durango(${TargetProject})
@@ -176,7 +176,7 @@ function(enable_unity_build UB_FILENAME SOURCE_VARIABLE_NAME)
 			           COMMAND ${CMAKE_COMMAND} -DUBER_FILE=${unit_build_file} 
 				   			    -DSRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 							    -DSRC_FILES="${unit_sources}"
-							    -P ${CMAKE_SOURCE_DIR}/Tools/CMake/write_uber_file.cmake)
+							    -P "${CryEngine_DIR}/Tools/CMake/write_uber_file.cmake")
 
 		# Group Uber files in solution project
 		source_group("UBER FILES" FILES ${unit_build_file})
@@ -421,7 +421,7 @@ function(CryLauncher target)
 	if(ORBIS)
 		set_property(TARGET ${target} PROPERTY OUTPUT_NAME "${target}.elf")	
 	elseif(NOT ANDROID)
-		set_property(TARGET ${THIS_PROJECT} PROPERTY OUTPUT_NAME "Game")	
+		set_property(TARGET ${THIS_PROJECT} PROPERTY OUTPUT_NAME "GameLauncher")	
 	endif()
 
 	if(OPTION_STATIC_LINKING)
@@ -469,9 +469,9 @@ macro(set_editor_flags)
 	target_include_directories( ${THIS_PROJECT} PRIVATE
 		${EDITOR_DIR}
 		${EDITOR_DIR}/Include	
-		${CMAKE_SOURCE_DIR}/Code/Sandbox/Plugins/EditorCommon 		
-		${CMAKE_SOURCE_DIR}/Code/Sandbox/EditorInterface
-		${CMAKE_SOURCE_DIR}/Code/CryEngine/CryCommon 
+		${CryEngine_DIR}/Code/Sandbox/Plugins/EditorCommon 		
+		${CryEngine_DIR}/Code/Sandbox/EditorInterface
+		${CryEngine_DIR}/Code/CryEngine/CryCommon 
 		${SDK_DIR}/boost
 		${SDK_DIR}/yasli
 		${CRY_LIBS_DIR}/yasli
@@ -492,9 +492,9 @@ endmacro()
 
 macro(set_editor_module_flags)
 	target_include_directories( ${THIS_PROJECT} PRIVATE
-		${CMAKE_SOURCE_DIR}/Code/Sandbox/Plugins/EditorCommon 		
-		${CMAKE_SOURCE_DIR}/Code/Sandbox/EditorInterface
-		${CMAKE_SOURCE_DIR}/Code/CryEngine/CryCommon 
+		${CryEngine_DIR}/Code/Sandbox/Plugins/EditorCommon 		
+		${CryEngine_DIR}/Code/Sandbox/EditorInterface
+		${CryEngine_DIR}/Code/CryEngine/CryCommon 
 		${SDK_DIR}/boost
 		${SDK_DIR}/yasli
 		${CRY_LIBS_DIR}/yasli
@@ -564,11 +564,11 @@ macro(set_rc_flags)
 		-DNOT_USE_CRY_MEMORY_MANAGER
 	)
 	target_include_directories( ${THIS_PROJECT} PRIVATE 
-		${CMAKE_SOURCE_DIR}/Code/CryEngine/CryCommon 
+		${CryEngine_DIR}/Code/CryEngine/CryCommon 
 		${SDK_DIR}/boost
 		${SDK_DIR}/yasli
 		${CRY_LIBS_DIR}/yasli
-		${CMAKE_SOURCE_DIR}/Code/Sandbox/Plugins/EditorCommon 
+		${CryEngine_DIR}/Code/Sandbox/Plugins/EditorCommon 
 	)
 	target_link_libraries( ${THIS_PROJECT} PRIVATE yasli )
 endmacro()
@@ -582,7 +582,7 @@ macro(set_pipeline_flags)
 		-DNOT_USE_CRY_MEMORY_MANAGER
 	)
 	target_include_directories( ${THIS_PROJECT} PRIVATE 
-		${CMAKE_SOURCE_DIR}/Code/CryEngine/CryCommon 
+		${CryEngine_DIR}/Code/CryEngine/CryCommon 
 	)
 endmacro()
 
@@ -590,8 +590,8 @@ function(CryPipelineModule target)
 	prepare_project(${ARGN})
 	add_library(${THIS_PROJECT} ${${THIS_PROJECT}_SOURCES})
 	set_rc_flags()
-	set_property(TARGET ${THIS_PROJECT} PROPERTY LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Tools/rc)
-	set_property(TARGET ${THIS_PROJECT} PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Tools/rc)
+	set_property(TARGET ${THIS_PROJECT} PROPERTY LIBRARY_OUTPUT_DIRECTORY ${CryEngine_DIR}/Tools/rc)
+	set_property(TARGET ${THIS_PROJECT} PROPERTY RUNTIME_OUTPUT_DIRECTORY ${CryEngine_DIR}/Tools/rc)
 	if(WIN32)
 		set_property(TARGET ${THIS_PROJECT} APPEND_STRING PROPERTY LINK_FLAGS " /SUBSYSTEM:CONSOLE")
 	endif()
@@ -600,6 +600,15 @@ function(CryPipelineModule target)
 endfunction()
 
 # WAF features
+function(use_qt_modules)
+	set(_QT_MODULES ${ARGN})
+	foreach(MODULE ${_QT_MODULES})
+		#find_package(Qt5${MODULE} REQUIRED)
+		target_include_directories(${THIS_PROJECT} PRIVATE ${QT_DIR}/include/Qt${MODULE})
+		target_link_libraries(${THIS_PROJECT} PRIVATE Qt5${MODULE}$<$<CONFIG:Debug>:d>)
+	endforeach()
+endfunction()
+
 macro(use_qt)
 	#custom_enable_QT5()
 	set(CMAKE_PREFIX_PATH "${QT_DIR}")
@@ -612,11 +621,7 @@ macro(use_qt)
 	set_property(TARGET ${THIS_PROJECT} APPEND_STRING PROPERTY LINK_FLAGS " ${LIBPATH_FLAG}${QT_DIR}/lib")
 
 	set(QT_MODULES Core Gui OpenGL Widgets)
-	foreach(MODULE ${QT_MODULES})
-		#find_package(Qt5${MODULE} REQUIRED)
-		target_include_directories(${THIS_PROJECT} PRIVATE ${QT_DIR}/include/Qt${MODULE})
-		target_link_libraries(${THIS_PROJECT} PRIVATE Qt5${MODULE}$<$<CONFIG:Debug>:d>)
-	endforeach()
+	use_qt_modules(${QT_MODULES})
 endmacro()
 
 macro(process_csharp output_module)
@@ -697,7 +702,7 @@ macro(process_csharp output_module)
 			MAIN_DEPENDENCY ${CMAKE_CURRENT_SOURCE_DIR}/${f}
 			DEPENDS ${swig_deps}
 		)
-	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${swig_deps} ${CMAKE_CURRENT_SOURCE_DIR}/${f})
+	set_property(DIRECTORY ${CryEngine_DIR} APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${swig_deps} ${CMAKE_CURRENT_SOURCE_DIR}/${f})
 		set(secondary_defs -DSWIG_CXX_EXCLUDE_SWIG_INTERFACE_FUNCTIONS -DSWIG_CSHARP_EXCLUDE_STRING_HELPER -DSWIG_CSHARP_EXCLUDE_EXCEPTION_HELPER)
 		target_sources(${THIS_PROJECT} PRIVATE ${f_cpp} ${f_h})
 		EXCLUDE_FILE_FROM_MSVC_PRECOMPILED_HEADER(${f_cpp})
@@ -888,7 +893,7 @@ macro(use_scaleform)
 	target_compile_definitions(${THIS_PROJECT} PRIVATE -DCRY_FEATURE_SCALEFORM_HELPER)
 	if (EXISTS ${SDK_DIR}/Scaleform)
 		target_include_directories(${THIS_PROJECT} PRIVATE "${SDK_DIR}/Scaleform/Include" )
-		target_compile_definitions(${THIS_PROJECT} PRIVATE -DINCLUDE_SCALEFORM_SDK)
+		target_compile_definitions(${THIS_PROJECT} PRIVATE -DINCLUDE_SCALEFORM_SDK $<$<CONFIG:Debug>:GFC_BUILD_DEBUG>)
 		set(SCALEFORM_LIB_FOLDER "${SDK_DIR}/Scaleform/Lib")
 		set(SCALEFORM_HAS_SHIPPING_LIB TRUE)
 		if (WIN64)
@@ -950,3 +955,30 @@ macro(use_xt)
 	set_property(TARGET ${THIS_PROJECT} APPEND_STRING PROPERTY LINK_FLAGS " ${LIBPATH_FLAG}${SDK_DIR}/XT_13_4/lib_${XT_VERSION}")
 endmacro()
 
+# Function lists the subdirectories using the glob expression
+function(list_subdirectories_glob globPattern result)
+	file(GLOB _pathList LIST_DIRECTORIES true "${globPattern}")
+	set(_dirList)
+	foreach(_child ${_pathList})
+		if (IS_DIRECTORY "${_child}")
+			list(APPEND _dirList "${_child}")
+		endif()
+	endforeach()
+	set(${result} ${_dirList} PARENT_SCOPE)
+endfunction()
+
+# Helper function finds and adds subdirectories containing CMakeLists.txt
+function(add_subdirectories_glob globPattern)
+	set(_dirs)
+	list_subdirectories_glob("${globPattern}" _dirs)
+	foreach(dir ${_dirs})
+		if (EXISTS "${dir}/CMakeLists.txt")
+			#message(STATUS "add_subdirectory ${dir}")
+			add_subdirectory(${dir})
+		endif()
+	endforeach()
+endfunction()
+
+function(add_subdirectories)
+	add_subdirectories_glob("*")
+endfunction()

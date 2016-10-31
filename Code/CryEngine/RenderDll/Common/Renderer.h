@@ -115,13 +115,14 @@ const float TANGENT30_2 = 0.57735026918962576450914878050196f * 2;   // 2*tan(30
 #define TEXMAXANISOTROPY_DEFAULT_VAL          8
 #if CRY_PLATFORM_DESKTOP
 	#define TEXNOANISOALPHATEST_DEFAULT_VAL     0
+	#define SHADERS_ALLOW_COMPILATION_DEFAULT_VAL 1
 #else
 	#define TEXNOANISOALPHATEST_DEFAULT_VAL     1
+	#define SHADERS_ALLOW_COMPILATION_DEFAULT_VAL 0
 #endif
 #define ENVTEXRES_DEFAULT_VAL                 3
 #define WATERREFLQUAL_DEFAULT_VAL             4
 #define DOF_DEFAULT_VAL                       2
-#define SHADERS_ALLOW_COMPILATION_DEFAULT_VAL 1
 #define SHADERS_PREACTIVATE_DEFAULT_VAL       3
 #define CUSTOMVISIONS_DEFAULT_VAL             3
 #define FLARES_DEFAULT_VAL                    1
@@ -581,7 +582,6 @@ public:
 	virtual void RT_ShutDown(uint32 nFlags) = 0;
 	virtual bool RT_CreateDevice() = 0;
 	virtual void RT_Reset() = 0;
-	virtual void RT_FlushTextMessages();
 	virtual void RT_SetCull(int nMode) = 0;
 	virtual void RT_SetScissor(bool bEnable, int x, int y, int width, int height) = 0;
 	virtual void RT_SelectGPU(int nGPU) = 0;
@@ -844,9 +844,6 @@ public:
 	                       const float projMatrix[16],
 	                       const int viewport[4]) override = 0;
 	virtual int  UnProjectFromScreen(float sx, float sy, float sz, float* px, float* py, float* pz) override = 0;
-
-	virtual void FlushTextMessages() override;
-	void         FlushTextMessages(CTextMessages& messages, bool reset);
 
 	// Shadow Mapping
 	virtual void OnEntityDeleted(IRenderNode* pRenderNode) override = 0;
@@ -1568,7 +1565,6 @@ protected:
 	float                                      m_pixelAspectRatio;
 	float                                      m_shadowJittering;
 	StaticArray<int, MAX_GSM_LODS_NUM>         m_CachedShadowsResolution;
-	CTextMessages                              m_TextMessages[RT_COMMAND_BUF_COUNT]; // [ThreadID], temporary stores 2d/3d text messages to render them at the end of the frame
 
 	CSkinningDataPool                          m_SkinningDataPool[3];        // Tripple Buffered for motion blur
 	std::array<std::vector<SSkinningData*>, 3> m_computeSkinningData;

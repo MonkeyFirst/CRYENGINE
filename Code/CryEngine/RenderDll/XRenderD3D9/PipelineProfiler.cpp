@@ -540,8 +540,6 @@ void CRenderPipelineProfiler::DisplayDetailedPassStats(uint32 frameDataIndex)
 		IRenderAuxText::Draw2dLabel(xpos + 450, ypos, 1.5f, &color.r, false, "%i", section.numDIPs);
 		IRenderAuxText::Draw2dLabel(xpos + 500, ypos, 1.5f, &color.r, false, "%i", section.numPolys);
 	}
-
-	rd->RT_FlushTextMessages();
 #endif
 }
 
@@ -556,7 +554,7 @@ void DrawText(float x, float y, float size, ColorF color, const char* text)
 	float sx = VIRTUAL_SCREEN_WIDTH / aspect;
 	float sy = VIRTUAL_SCREEN_HEIGHT;
 
-	IRenderAuxText::DrawText(Vec3(x * sx, y * sy, 1.f), IRenderAuxText::ASize(size * 1.55f / aspect, size * 1.1f), color, eDrawText_800x600 | eDrawText_2D, text);
+	IRenderAuxText::DrawText(Vec3(x * sx, y * sy, 1.f), IRenderAuxText::ASize(size * 1.55f / aspect, size * 1.1f), color, eDrawText_800x600 | eDrawText_2D | eDrawText_LegacyBehavior, text);
 }
 
 void DrawText(float x, float y, float size, ColorF color, const char* format, va_list args)
@@ -679,8 +677,6 @@ void CRenderPipelineProfiler::DisplayOverviewStats()
 			DebugUI::DrawTableColumn(0.05f, 0.27f, i, "%-20s  %4.1f ms  %2.0f %%", statsGroups[i].name, stats.gpuTimeSmoothed, stats.gpuTimeSmoothed / targetFrameTime * 100.0f);
 		}
 	}
-
-	rd->RT_FlushTextMessages();
 #endif
 }
 

@@ -50,6 +50,9 @@ add_sources("CryDefaultEntities_uber_0.cpp"
 	SOURCE_GROUP "Triggers"
 		"Triggers/TriggerEntity.cpp"
 		"Triggers/TriggerEntity.h"
+	SOURCE_GROUP "AI"
+		"AI/TagPoint.cpp"
+		"AI/TagPoint.h"
 )
 
 add_sources("NoUberFile"
@@ -63,7 +66,7 @@ end_sources()
 if(WIN64)
 	CryEngineModule(CryDefaultEntities PCH "StdAfx.cpp" SOLUTION_FOLDER "CryPlugins")
 
-	target_include_directories(${THIS_PROJECT} PRIVATE ${CMAKE_SOURCE_DIR}/Code/CryEngine/CryCommon PUBLIC ../Interface)
+	target_include_directories(${THIS_PROJECT} PRIVATE ${CryEngine_DIR}/Code/CryEngine/CryCommon PUBLIC ../Interface)
 	# Remove when we've switched to entity components
-	target_include_directories(${THIS_PROJECT} PRIVATE ${CMAKE_SOURCE_DIR}/Code/CryEngine/CryAction PUBLIC ../Interface)
+	target_include_directories(${THIS_PROJECT} PRIVATE ${CryEngine_DIR}/Code/CryEngine/CryAction PUBLIC ../Interface)
 endif()

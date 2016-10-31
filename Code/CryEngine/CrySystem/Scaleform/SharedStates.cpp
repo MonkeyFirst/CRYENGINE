@@ -282,7 +282,7 @@ CryGFxTranslator::~CryGFxTranslator()
 
 UInt CryGFxTranslator::GetCaps() const
 {
-	return Cap_StripTrailingNewLines;
+	return Cap_ReceiveHtml | Cap_StripTrailingNewLines;
 }
 
 void CryGFxTranslator::Translate(TranslateInfo* pTranslateInfo)
@@ -302,7 +302,12 @@ void CryGFxTranslator::Translate(TranslateInfo* pTranslateInfo)
 	Unicode::Convert(utf8Key, pKey);
 
 	if (m_pILocMan->LocalizeString(utf8Key, localizedString))
-		pTranslateInfo->SetResult(localizedString.c_str());
+	{
+		if (pTranslateInfo->IsKeyHtml())
+			pTranslateInfo->SetResultHtml(localizedString.c_str());
+		else
+			pTranslateInfo->SetResult(localizedString.c_str());
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -359,7 +364,7 @@ void CryGFxLog::LogMessageVarg(LogMessageType messageType, const char* pFmt, va_
 	{
 		const char prefix[] = "<Flash> ";
 
-		COMPILE_TIME_ASSERT(sizeof(prefix) + 128 <= sizeof(logBuf));
+		static_assert(sizeof(prefix) + 128 <= sizeof(logBuf), "Invalid array size!");
 
 		// prefix
 		{

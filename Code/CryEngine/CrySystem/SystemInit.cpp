@@ -4403,8 +4403,8 @@ static void RecordClipCmd(IConsoleCmdArgs* pArgs)
 		const size_t MAX_WSTR_BUFFER = 64;
 
 		// make sure the description string has always a reasonable size and the default string is withing size range
-		COMPILE_TIME_ASSERT(CRY_ARRAY_COUNT(DEFAULT_CLIP_DESC) <= MAX_WSTR_BUFFER);
-		COMPILE_TIME_ASSERT(MAX_WSTR_BUFFER >= 8 && MAX_WSTR_BUFFER <= 64);
+		static_assert(CRY_ARRAY_COUNT(DEFAULT_CLIP_DESC) <= MAX_WSTR_BUFFER, "Invalid string length!");
+		static_assert(MAX_WSTR_BUFFER >= 8 && MAX_WSTR_BUFFER <= 64, "Invalid buffer size!");
 
 		// parameters to keep
 		static CryFixedWStringT<MAX_WSTR_BUFFER> sParamFixedWStrDescription(DEFAULT_CLIP_DESC);
@@ -5071,13 +5071,7 @@ void CSystem::CreateSystemVars()
 	REGISTER_CVAR2("sys_streaming_in_blocks", &g_cvars.sys_streaming_in_blocks, 1, VF_NULL,
 	               "Streaming of large files happens in blocks");
 
-#if CRY_PLATFORM_WINDOWS && !defined(_RELEASE)
-	#define CVAR_FPE_DEFAULT_VALUE 1
-#else
-	#define CVAR_FPE_DEFAULT_VALUE 0
-#endif
-
-	REGISTER_CVAR2("sys_float_exceptions", &g_cvars.sys_float_exceptions, CVAR_FPE_DEFAULT_VALUE, 0,
+	REGISTER_CVAR2("sys_float_exceptions", &g_cvars.sys_float_exceptions, 0, 0,
 	               "Floating Point Exceptions:\n"
 	               "  0 = Disabled\n"
 	               "  1 = Basic [ZERODIVIDE, INVALID] \n"
@@ -5313,6 +5307,10 @@ void CSystem::CreateSystemVars()
 
 #if CRY_PLATFORM_WINDOWS
 	REGISTER_CVAR2("sys_highrestimer", &g_cvars.sys_highrestimer, 0, VF_REQUIRE_APP_RESTART, "Enables high resolution system timer.");
+#endif
+
+#if CRY_PLATFORM_WINDOWS
+	((DebugCallStack*)IDebugCallStack::instance())->RegisterCVars();
 #endif
 }
 

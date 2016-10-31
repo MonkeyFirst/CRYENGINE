@@ -306,20 +306,79 @@ public:
 
 	_Self& Trim();
 	_Self& Trim(value_type ch);
-	_Self& Trim(const value_type* sCharSet);
+	_Self& Trim(const_str sCharSet);
 
 	_Self& TrimLeft();
 	_Self& TrimLeft(value_type ch);
-	_Self& TrimLeft(const value_type* sCharSet);
+	_Self& TrimLeft(const_str sCharSet);
 
 	_Self& TrimRight();
 	_Self& TrimRight(value_type ch);
-	_Self& TrimRight(const value_type* sCharSet);
+	_Self& TrimRight(const_str sCharSet);
+	void Truncate(size_type nNewLength) { resize(nNewLength); }
 
 	_Self  SpanIncluding(const_str charSet) const;
 	_Self  SpanExcluding(const_str charSet) const;
 	_Self  Tokenize(const_str charSet, int& nStart) const;
 	_Self  Mid(size_type nFirst, size_type nCount = npos) const { return substr(nFirst, nCount); }
+
+	const_str GetString() const { return c_str(); }
+	const_str GetBuffer() const { return c_str(); }
+	int GetLength() const { return (int)length(); }
+	bool IsEmpty() const { return empty(); }
+	void Empty() { clear(); }
+
+	_Self& Insert(size_type nIndex, value_type ch) { return insert(nIndex, ch); }
+	_Self& Insert(size_type nIndex, const_str charSet) { return insert(nIndex, charSet); }
+	_Self& Insert(size_type nIndex, const _Self& charSet) { return insert(nIndex, charSet); }
+
+	int Find(value_type ch, size_type pos = 0) const { return (int)find(ch, pos); }
+	int Find(const_str subs, size_type pos = 0) const { return (int)find(subs, pos); }
+	int ReverseFind(value_type ch, size_type pos = npos) const { return (int)rfind(ch, pos); }
+	int ReverseFind(const _Self& subs, size_type pos = 0) const { return (int)rfind(subs, pos); }
+
+	int FindOneOf(const_str chars) const
+	{
+		int pos = -1;
+		while (*chars)
+		{
+			pos = Find(*chars);
+			if (pos != -1)
+				break;
+
+			++chars;
+		}
+		return pos;
+	}
+
+	_Self& Replace(value_type chOld, value_type chNew) { return replace(chOld, chNew); }
+	_Self& Replace(const_str strOld, const_str strNew) { return replace(strOld, strNew); }
+
+	int CompareNoCase(const _Self& _Str) const { return compareNoCase(_Str); }
+	int CompareNoCase(const value_type* _Ptr) const { return compareNoCase(_Ptr); }
+	int Compare(const _Self& _Str) const { return compare(_Str); }
+	int Compare(const char* _Ptr) const { return compare(_Ptr); }
+
+	_Self& Append(const value_type* _Ptr) { return append(_Ptr); }
+	_Self& Append(const _Self& _Str) { return append(_Str); }
+	_Self& Append(const value_type* _Ptr, size_type nCount) { return append(_Ptr, nCount); }
+
+	_Self& AppendFormat(const value_type* pszFormat, ...)
+	{
+		_Self formated = *this;
+		va_list argList;
+		va_start(argList, pszFormat);
+		FormatV(pszFormat, argList);
+		va_end(argList);
+		formated.append(*this);
+		return *this = formated;
+	}
+
+	void Preallocate(size_type nLength) { reserve(nLength); }
+	_Self Delete(size_type nIndex, size_type nCount = 1) { return erase(nIndex, nCount); }
+
+	value_type GetAt(size_type pos) const { return at(pos); }
+	void SetAt(size_type pos, value_type ch) { replace(pos, 1, 1, ch); }
 
 	_Self  Left(size_type count) const;
 	_Self  Right(size_type count) const;
@@ -640,8 +699,8 @@ inline void CryStringT<T >::_move(value_type* dest, const value_type* src, size_
 template<class T>
 inline void CryStringT<T >::_set(value_type* dest, value_type ch, size_type count)
 {
-	COMPILE_TIME_ASSERT(sizeof(value_type) == sizeof(T));
-	COMPILE_TIME_ASSERT(sizeof(value_type) == 1);
+	static_assert(sizeof(value_type) == sizeof(T), "Invalid type size!");
+	static_assert(sizeof(value_type) == 1, "Invalid type size!");
 	memset(dest, ch, count);
 }
 
@@ -649,7 +708,7 @@ inline void CryStringT<T >::_set(value_type* dest, value_type ch, size_type coun
 template<>
 inline void CryStringT<wchar_t >::_set(value_type* dest, value_type ch, size_type count)
 {
-	COMPILE_TIME_ASSERT(sizeof(value_type) == sizeof(wchar_t));
+	static_assert(sizeof(value_type) == sizeof(wchar_t), "Invalid type size!");
 	wmemset(dest, ch, count);
 }
 
@@ -2412,3 +2471,4 @@ typedef std::string  string;
 typedef std::wstring wstring;
 
 #endif // !defined(NOT_USE_CRY_STRING)
+

@@ -530,7 +530,7 @@ CGame::CGame()
 #endif
 	, m_stereoOutputFunctorId(0)
 {
-	COMPILE_TIME_ASSERT(eCGE_Last <= 64);
+	static_assert(eCGE_Last <= 64, "Unexpected enum value!");
 
 	m_pCVars = new SCVars();
 	g_pGameCVars = m_pCVars;
@@ -3177,9 +3177,6 @@ void CGame::Shutdown()
 	{
 		SAFE_DELETE(m_pPlaylistManager);
 	}
-
-	if (m_pUIManager)
-		m_pUIManager->Shutdown();
 
 	CBullet::StaticShutdown();
 
