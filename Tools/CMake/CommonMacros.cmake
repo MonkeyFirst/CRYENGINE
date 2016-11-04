@@ -115,6 +115,7 @@ endmacro()
 MACRO(SET_PLATFORM_TARGET_PROPERTIES TargetProject)
 	target_compile_definitions( ${THIS_PROJECT} PRIVATE "-DCODE_BASE_FOLDER=\"${CryEngine_DIR}/Code/\"")
 	target_link_libraries( ${THIS_PROJECT} PRIVATE ${COMMON_LIBS} )
+		
 	IF(DURANGO)
 		set_target_properties_for_durango(${TargetProject})
 	ENDIF(DURANGO)
@@ -130,6 +131,7 @@ MACRO(SET_PLATFORM_TARGET_PROPERTIES TargetProject)
       set_property(TARGET ${TargetProject} PROPERTY VC_MDD_ANDROID_USE_OF_STL "${VC_MDD_ANDROID_USE_OF_STL}")
     endif()
 		set_property(TARGET ${TargetProject} PROPERTY VC_MDD_ANDROID_API_LEVEL "${VC_MDD_ANDROID_API_LEVEL}")
+		set_property(TARGET ${TargetProject} PROPERTY VS_GLOBAL_UseMultiToolTask "True")  
 	endif()
 	
 	if(CMAKE_RUNTIME_OUTPUT_DIRECTORY)
@@ -334,7 +336,7 @@ macro(force_static_crt)
 endmacro()
 
 macro(read_settings)
-	set(options DISABLE_MFC)
+	set(options DISABLE_MFC FORCE_STATIC)
 	set(oneValueArgs SOLUTION_FOLDER PCH)
 	set(multiValueArgs FILE_LIST INCLUDES LIBS DEFINES)
 	cmake_parse_arguments(MODULE "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
@@ -368,11 +370,15 @@ function(CryEngineModule target)
 	prepare_project(${ARGN})
 	add_library(${THIS_PROJECT} ${${THIS_PROJECT}_SOURCES})
 	apply_compile_settings()
-	if (OPTION_STATIC_LINKING)
+	if (OPTION_STATIC_LINKING OR MODULE_FORCE_STATIC)
 		target_compile_definitions(${THIS_PROJECT} PRIVATE _LIB -DCRY_IS_MONOLITHIC_BUILD)
 		set(MODULES ${MODULES} ${THIS_PROJECT} CACHE INTERNAL "Modules for monolithic builds" FORCE)
 	else()
 		generate_rc_file()
+	endif()
+	if (ANDROID AND NOT OPTION_STATIC_LINKING AND NOT MODULE_FORCE_STATIC) 
+		set(SHARED_MODULES ${SHARED_MODULES} ${THIS_PROJECT} CACHE INTERNAL "Shared modules for APK creation" FORCE)
+		target_link_libraries(${THIS_PROJECT} PRIVATE m log c android)
 	endif()
 
 	install(TARGETS ${target} LIBRARY DESTINATION bin RUNTIME DESTINATION bin ARCHIVE DESTINATION lib)
@@ -388,6 +394,9 @@ function(CryGameModule target)
 	if (OPTION_STATIC_LINKING)
 		target_compile_definitions(${THIS_PROJECT} PRIVATE _LIB -DCRY_IS_MONOLITHIC_BUILD)
 		set(GAME_MODULES ${GAME_MODULES} ${THIS_PROJECT} CACHE INTERNAL "Game Modules for monolithic builds" FORCE)
+	elseif(ANDROID)
+		set(GAME_MODULES ${GAME_MODULES} ${THIS_PROJECT} CACHE INTERNAL "Game Modules for builds" FORCE)
+		target_link_libraries(${THIS_PROJECT} PRIVATE m log c android)
 	else()
 		generate_rc_file()
 	endif()
@@ -412,6 +421,7 @@ function(CryLauncher target)
 	prepare_project(${ARGN})
 	if(ANDROID)
 		add_library(${target} SHARED ${${THIS_PROJECT}_SOURCES})
+		target_link_libraries(${THIS_PROJECT} PRIVATE m log c android)
 		configure_android_launcher(${target})		
 	elseif(WIN32)
 		add_executable(${THIS_PROJECT} WIN32 ${${THIS_PROJECT}_SOURCES})
@@ -465,52 +475,38 @@ function(CryFileContainer target)
 	endif()
 endfunction()
 
+macro(set_editor_module_flags)
+	target_include_directories( ${THIS_PROJECT} PRIVATE
+		${CryEngine_DIR}/Code/Sandbox/Plugins/EditorCommon
+		${CryEngine_DIR}/Code/Sandbox/EditorInterface
+		${CryEngine_DIR}/Code/CryEngine/CryCommon 
+		${SDK_DIR}/boost
+		${SDK_DIR}/yasli
+		${CRY_LIBS_DIR}/yasli
+	)
+	target_compile_definitions( ${THIS_PROJECT} PRIVATE
+		-DWIN32
+		-DCRY_ENABLE_RC_HELPER
+		-DIS_EDITOR_BUILD
+		-DQT_FORCE_ASSERT
+		-DUSE_PYTHON_SCRIPTING 
+	)
+	if(NOT MODULE_DISABLE_MFC)
+		target_compile_definitions( ${THIS_PROJECT} PRIVATE -D_AFXDLL)
+	endif()
+	target_link_libraries( ${THIS_PROJECT} PRIVATE yasli BoostPython python27)
+	use_qt()
+	
+	target_include_directories(${THIS_PROJECT} PRIVATE ${CMAKE_SOURCE_DIR}/Code/Sandbox/Libs/CryQt)
+	target_link_libraries(${THIS_PROJECT} PRIVATE CryQt)
+endmacro()
+
 macro(set_editor_flags)
 	target_include_directories( ${THIS_PROJECT} PRIVATE
 		${EDITOR_DIR}
-		${EDITOR_DIR}/Include	
-		${CryEngine_DIR}/Code/Sandbox/Plugins/EditorCommon 		
-		${CryEngine_DIR}/Code/Sandbox/EditorInterface
-		${CryEngine_DIR}/Code/CryEngine/CryCommon 
-		${SDK_DIR}/boost
-		${SDK_DIR}/yasli
-		${CRY_LIBS_DIR}/yasli
+		${EDITOR_DIR}/Include
 	)
-	target_compile_definitions( ${THIS_PROJECT} PRIVATE
-		-DWIN32
-		-DCRY_ENABLE_RC_HELPER
-		-DIS_EDITOR_BUILD
-		-DQT_FORCE_ASSERT
-		-DUSE_PYTHON_SCRIPTING 
-	)
-	if(NOT MODULE_DISABLE_MFC)
-		target_compile_definitions( ${THIS_PROJECT} PRIVATE -D_AFXDLL)
-	endif()
-	target_link_libraries( ${THIS_PROJECT} PRIVATE yasli BoostPython python27)
-	use_qt()
-endmacro()
-
-macro(set_editor_module_flags)
-	target_include_directories( ${THIS_PROJECT} PRIVATE
-		${CryEngine_DIR}/Code/Sandbox/Plugins/EditorCommon 		
-		${CryEngine_DIR}/Code/Sandbox/EditorInterface
-		${CryEngine_DIR}/Code/CryEngine/CryCommon 
-		${SDK_DIR}/boost
-		${SDK_DIR}/yasli
-		${CRY_LIBS_DIR}/yasli
-	)
-	target_compile_definitions( ${THIS_PROJECT} PRIVATE
-		-DWIN32
-		-DCRY_ENABLE_RC_HELPER
-		-DIS_EDITOR_BUILD
-		-DQT_FORCE_ASSERT
-		-DUSE_PYTHON_SCRIPTING 
-	)
-	if(NOT MODULE_DISABLE_MFC)
-		target_compile_definitions( ${THIS_PROJECT} PRIVATE -D_AFXDLL)
-	endif()
-	target_link_libraries( ${THIS_PROJECT} PRIVATE yasli BoostPython python27)
-	use_qt()
+	set_editor_module_flags()
 endmacro()
 
 function(CryEditor target)

@@ -127,8 +127,7 @@ extern LONG WINAPI CryEngineExceptionFilterWER(struct _EXCEPTION_POINTERS* pExce
 CUNIXConsole* pUnixConsole;
 #endif
 
-#if CRY_PLATFORM_ANDROID
-extern const char*    androidGetPakPath();
+#if CRY_PLATFORM_ANDROID && defined(ANDROID_OBB)
 extern const char*    androidGetPackageName();
 extern const char*    androidGetMainExpName();
 extern const char*    androidGetPatchExpName();
@@ -1641,7 +1640,7 @@ bool CSystem::InitPhysicsRenderer()
 	//////////////////////////////////////////////////////////////////////////
 	// Physics Renderer (for debug helpers)
 	//////////////////////////////////////////////////////////////////////////
-	if (!m_startupParams.bSkipRenderer && !m_bUIFrameworkMode && !m_startupParams.bShaderCacheGen)
+	if (m_env.pRenderer && !m_bUIFrameworkMode && !m_startupParams.bShaderCacheGen)
 	{
 		m_pPhysRenderer = new CPhysRenderer;
 		m_pPhysRenderer->Init(); // needs to be created after physics and renderer
@@ -1810,7 +1809,7 @@ bool CSystem::InitFileSystem(const IGameStartup* pGameStartup)
 	pCryPak->AddMod("%ENGINEROOT%/" CRYENGINE_ENGINE_FOLDER);
 
 #if CRY_PLATFORM_ANDROID
-	pCryPak->AddMod(androidGetPakPath());
+	pCryPak->AddMod(CryGetProjectStoragePath());
 	#if defined(ANDROID_OBB)
 	pCryPak->SetAssetManager(androidGetAssetManager());
 	#endif
@@ -1900,7 +1899,7 @@ bool CSystem::InitFileSystem_LoadEngineFolders()
 	{
 		ILoadConfigurationEntrySink* pCVarsWhiteListConfigSink = GetCVarsWhiteListConfigSink();
 #if CRY_PLATFORM_ANDROID && !defined(ANDROID_OBB)
-		string path = string(androidGetPakPath()) + "/system.cfg";
+		string path = string(CryGetProjectStoragePath()) + "/system.cfg";
 		LoadConfiguration(path.c_str(), pCVarsWhiteListConfigSink, eLoadConfigInit);
 #else
 		LoadConfiguration("system.cfg", pCVarsWhiteListConfigSink, eLoadConfigInit);
@@ -2482,7 +2481,7 @@ bool CSystem::Init()
 #endif
 
 #if !defined(DEDICATED_SERVER)
-	if (!m_bDedicatedServer)
+	if (m_env.pRenderer)
 	{
 		m_pHmdManager = new CHmdManager();
 	}
@@ -2800,9 +2799,10 @@ L_done:;
 			}
 		}
 
-		if (!m_startupParams.bSkipRenderer)
-		{
-			m_FrameProfileSystem.Init(m_sys_profile_allThreads->GetIVal());
+		m_FrameProfileSystem.Init(m_sys_profile_allThreads->GetIVal());
+
+		if (!m_env.pRenderer)
+		{			
 			CreateRendererVars();
 		}
 
@@ -2896,7 +2896,7 @@ L_done:;
 		}
 
 #if CRY_PLATFORM_WINDOWS
-		if (!m_startupParams.bSkipRenderer)
+		if (!m_env.pRenderer)
 		{
 			if (stricmp(m_rDriver->GetString(), "Auto") == 0)
 			{
@@ -2904,11 +2904,11 @@ L_done:;
 			}
 		}
 
-		if (gEnv->IsEditor())
+		if (m_env.IsEditor())
 		{
 			if (stricmp(m_rDriver->GetString(), "DX11") != 0)
 			{
-				gEnv->pLog->LogWarning("Editor only supports DX11. Switching to DX11 Renderer.");
+				m_env.pLog->LogWarning("Editor only supports DX11. Switching to DX11 Renderer.");
 				m_rDriver->Set("DX11");
 			}
 		}
@@ -3048,7 +3048,7 @@ L_done:;
 		}
 
 #if defined(INCLUDE_SCALEFORM_SDK) || defined(CRY_FEATURE_SCALEFORM_HELPER)
-		if (!gEnv->IsDedicated())
+		if (m_env.pRenderer && !m_bShaderCacheGenMode)
 		{
 			if (!InitializeEngineModule(DLL_SCALEFORM, "EngineModule_ScaleformHelper", false))
 			{
@@ -3079,11 +3079,10 @@ L_done:;
 
 		InlineInitializationProcessing("CSystem::Init m_pResourceManager->UnloadFastLoadPaks");
 
-		assert(m_env.pRenderer || gEnv->IsDedicated());
-
 		const bool bStartScreensAllowed = !m_startupParams.bEditor
 		                                  && !m_startupParams.bShaderCacheGen
-		                                  && !gEnv->IsDedicated();
+		                                  && !m_env.IsDedicated()
+		                                  && m_env.pRenderer;
 
 #if defined(IS_EAAS)
 		if (bStartScreensAllowed)
@@ -3148,11 +3147,10 @@ L_done:;
 
 		if (g_cvars.sys_intromoviesduringinit && bStartScreensAllowed)
 		{
-			if (m_env.pRenderer)
-			{
-				m_env.pRenderer->InitSystemResources(FRR_SYSTEM_RESOURCES);
-				m_env.pRenderer->StartRenderIntroMovies();
-			}
+
+			m_env.pRenderer->InitSystemResources(FRR_SYSTEM_RESOURCES);
+			m_env.pRenderer->StartRenderIntroMovies();
+			
 		}
 		else if (g_cvars.sys_rendersplashscreen && bStartScreensAllowed)
 		{
@@ -3224,7 +3222,7 @@ L_done:;
 		//////////////////////////////////////////////////////////////////////////
 		// POST RENDERER
 		//////////////////////////////////////////////////////////////////////////
-		if (!m_startupParams.bSkipRenderer && m_env.pRenderer)
+		if (m_env.pRenderer)
 		{
 			m_env.pRenderer->PostInit();
 
@@ -3376,7 +3374,7 @@ L_done:;
 		//////////////////////////////////////////////////////////////////////////
 		// Init 3d engine
 		//////////////////////////////////////////////////////////////////////////
-		if (!m_startupParams.bSkipRenderer && !m_startupParams.bShaderCacheGen)
+		if (!m_startupParams.bShaderCacheGen)
 		{
 			CryLogAlways("Initializing 3D Engine");
 			INDENT_LOG_DURING_SCOPE();
@@ -3407,8 +3405,6 @@ L_done:;
 		//////////////////////////////////////////////////////////////////////////
 		// We need script materials for now
 
-		// if (!startupParams.bPreview)
-		if (!m_startupParams.bSkipRenderer && !m_startupParams.bShaderCacheGen)
 		{
 			CryLogAlways("Script System Initialization");
 			INDENT_LOG_DURING_SCOPE();
@@ -3542,7 +3538,7 @@ L_done:;
 		//////////////////////////////////////////////////////////////////////////
 		// Initialize task threads.
 		//////////////////////////////////////////////////////////////////////////
-		if (!m_startupParams.bSkipRenderer)
+		if (!m_env.IsDedicated())
 		{
 			SetAffinity();
 			assert(IsHeapValid());
@@ -4812,6 +4808,8 @@ void CSystem::CreateSystemVars()
 	attachVariable("sys_UncachedStreamReads", &g_cvars.pakVars.nUncachedStreamReads, "Enable stream reads via an uncached file handle");
 	attachVariable("sys_PakDisableNonLevelRelatedPaks", &g_cvars.pakVars.nDisableNonLevelRelatedPaks, "Disables all paks that are not required by specific level; This is used with per level splitted assets.");
 
+	REGISTER_CVAR2("sys_intromoviesduringinit", &g_cvars.sys_intromoviesduringinit, 0, VF_NULL,	"Render the intro movies during game initialization");
+
 	{
 		int nDefaultRenderSplashScreen = 1;
 #if CRY_PLATFORM_ORBIS
@@ -5053,12 +5051,8 @@ void CSystem::CreateSystemVars()
 	REGISTER_CVAR2("sys_streaming_debug_filter_min_time", &g_cvars.sys_streaming_debug_filter_min_time, 0.f, VF_NULL, "Show only slow items.");
 	REGISTER_CVAR2("sys_streaming_resetstats", &g_cvars.sys_streaming_resetstats, 0, VF_NULL,
 	               "Reset all the streaming stats");
-#if defined(DEDICATED_SERVER)
-	#define DEFAULT_USE_OPTICAL_DRIVE_THREAD 0
-#else
-	#define DEFAULT_USE_OPTICAL_DRIVE_THREAD 1
-#endif // defined(DEDICATED_SERVER)
-	REGISTER_CVAR2("sys_streaming_use_optical_drive_thread", &g_cvars.sys_streaming_use_optical_drive_thread, DEFAULT_USE_OPTICAL_DRIVE_THREAD, VF_NULL,
+
+	REGISTER_CVAR2("sys_streaming_use_optical_drive_thread", &g_cvars.sys_streaming_use_optical_drive_thread, 0, VF_NULL,
 	               "Allow usage of an extra optical drive thread for faster streaming from 2 medias");
 
 	g_cvars.sys_localization_folder = REGISTER_STRING_CB("sys_localization_folder", "localization", VF_NULL,
@@ -5284,6 +5278,8 @@ void CSystem::CreateSystemVars()
 
 	REGISTER_CVAR2("sys_error_debugbreak", &g_cvars.sys_error_debugbreak, 0, VF_CHEAT, "__debugbreak() if a VALIDATOR_ERROR_DBGBREAK message is hit");
 
+	REGISTER_CVAR2("sys_enable_crash_handler", &g_cvars.sys_enable_crash_handler, 0, VF_CHEAT, "Enable/Disable crash handler (PC only)");
+
 	// [VR]
 	if (m_pHmdManager)
 	{
@@ -5309,6 +5305,7 @@ void CSystem::CreateSystemVars()
 	REGISTER_CVAR2("sys_highrestimer", &g_cvars.sys_highrestimer, 0, VF_REQUIRE_APP_RESTART, "Enables high resolution system timer.");
 #endif
 
+	g_cvars.sys_intromoviesduringinit = 0;
 #if CRY_PLATFORM_WINDOWS
 	((DebugCallStack*)IDebugCallStack::instance())->RegisterCVars();
 #endif

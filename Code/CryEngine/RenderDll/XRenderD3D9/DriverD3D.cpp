@@ -1206,14 +1206,12 @@ void CD3D9Renderer::CalculateResolutions(int width, int height, bool bUseNativeR
 	*pNativeHeight = height;
 #endif
 
+	*pBackbufferWidth = *pNativeWidth;
+	*pBackbufferHeight = *pNativeHeight;
+
 	if (m_pStereoRenderer && m_pStereoRenderer->IsStereoEnabled())
 	{
-		m_pStereoRenderer->CalculateBackbufferResolution(*pNativeWidth, *pNativeHeight, pBackbufferWidth, pBackbufferHeight);
-	}
-	else
-	{
-		*pBackbufferWidth = *pNativeWidth;
-		*pBackbufferHeight = *pNativeHeight;
+		m_pStereoRenderer->CalculateBackbufferResolution(*pNativeWidth, *pNativeHeight, pRenderWidth, pRenderHeight);
 	}
 
 	if (m_windowParametersOverridden)
@@ -1380,7 +1378,7 @@ void CD3D9Renderer::BeginFrame()
 
 	m_cEF.mfBeginFrame();
 
-	CRendElement::Tick();
+	CRenderElement::Tick();
 	CFlashTextureSourceSharedRT::Tick();
 
 	CREImposter::m_PrevMemPostponed = CREImposter::m_MemPostponed;
@@ -1557,10 +1555,10 @@ void CD3D9Renderer::RT_BeginFrame()
 	if (CV_r_usehwskinning != (int)m_bUseHWSkinning)
 	{
 		m_bUseHWSkinning = CV_r_usehwskinning != 0;
-		CRendElement* pRE = CRendElement::m_RootGlobal.m_NextGlobal;
-		for (pRE = CRendElement::m_RootGlobal.m_NextGlobal; pRE != &CRendElement::m_RootGlobal; pRE = pRE->m_NextGlobal)
+		CRenderElement* pRE = CRenderElement::m_RootGlobal.m_NextGlobal;
+		for (pRE = CRenderElement::m_RootGlobal.m_NextGlobal; pRE != &CRenderElement::m_RootGlobal; pRE = pRE->m_NextGlobal)
 		{
-			CRendElementBase* pR = (CRendElementBase*)pRE;
+			CRenderElement* pR = (CRenderElement*)pRE;
 			if (pR->mfIsHWSkinned())
 				pR->mfReset();
 		}
@@ -2199,8 +2197,8 @@ void CD3D9Renderer::PrintResourcesLeaks()
 	}
 	iLog->Log("\n \n");
 
-	CRendElement* pRE;
-	for (pRE = CRendElement::m_RootGlobal.m_NextGlobal; pRE != &CRendElement::m_RootGlobal; pRE = pRE->m_NextGlobal)
+	CRenderElement* pRE;
+	for (pRE = CRenderElement::m_RootGlobal.m_NextGlobal; pRE != &CRenderElement::m_RootGlobal; pRE = pRE->m_NextGlobal)
 	{
 		Warning("--- CRenderElement %s leak after level unload", pRE->mfTypeString());
 	}
@@ -2509,8 +2507,8 @@ void CD3D9Renderer::DebugDrawStats1()
 
 	nSize = 0;
 	n = 0;
-	CRendElement* pRE = CRendElement::m_RootGlobal.m_NextGlobal;
-	while (pRE != &CRendElement::m_RootGlobal)
+	CRenderElement* pRE = CRenderElement::m_RootGlobal.m_NextGlobal;
+	while (pRE != &CRenderElement::m_RootGlobal)
 	{
 		n++;
 		nSize += pRE->Size();
@@ -6089,15 +6087,6 @@ void CD3D9Renderer::SetCamera(const CCamera& cam)
 	//mathMatrixPerspectiveFov(m, fov, cam.GetProjRatio(), cam.GetNearPlane(), cam.GetFarPlane());
 	//D3DXMatrixPerspectiveFovRH(m, fov, cam.GetProjRatio(), cam.GetNearPlane(), cam.GetFarPlane());
 
-	if (!IsRecursiveRenderView() && (m_RenderTileInfo.nGridSizeX > 1.f || m_RenderTileInfo.nGridSizeY > 1.f))
-	{
-		// shift and scale viewport
-		(*m).m00 *= m_RenderTileInfo.nGridSizeX;
-		(*m).m11 *= m_RenderTileInfo.nGridSizeY;
-		(*m).m20 = (m_RenderTileInfo.nGridSizeX - 1) - m_RenderTileInfo.nPosX * 2.0f;
-		(*m).m21 = -((m_RenderTileInfo.nGridSizeY - 1) - m_RenderTileInfo.nPosY * 2.0f);
-	}
-
 	Matrix44_tpl<f64> mCam44T = mCam34.GetTransposed();
 	Matrix44_tpl<f64> mView64;
 	mathMatrixLookAtInverse(&mView64, &mCam44T);
@@ -7275,8 +7264,8 @@ void CD3D9Renderer::GetMemoryUsage(ICrySizer* Sizer)
 		SIZER_COMPONENT_NAME(Sizer, "Render elements");
 
 		AUTO_LOCK(m_sREResLock);
-		CRendElement* pRE = CRendElement::m_RootGlobal.m_NextGlobal;
-		while (pRE != &CRendElement::m_RootGlobal)
+		CRenderElement* pRE = CRenderElement::m_RootGlobal.m_NextGlobal;
+		while (pRE != &CRenderElement::m_RootGlobal)
 		{
 			Sizer->AddObject(pRE);
 			pRE = pRE->m_NextGlobal;

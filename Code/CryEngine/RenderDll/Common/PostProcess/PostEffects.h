@@ -713,16 +713,11 @@ public:
 		m_nID = ePFX_WaterVolume;
 
 		AddParamFloatNoTransition("WaterVolume_Amount", m_pAmount, 0.0f);
-		m_nCurrSimID = 0;
 	}
 
 	virtual bool Preprocess();
 	virtual void Render();
 	virtual void Reset(bool bOnSpecChange = false);
-	int          GetCurrentPuddle()
-	{
-		return m_nCurrSimID;
-	}
 
 	virtual const char* GetName() const
 	{
@@ -733,7 +728,6 @@ private:
 
 	// float
 	CEffectParam* m_pAmount;
-	int           m_nCurrSimID;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1459,7 +1453,7 @@ public:
 	{
 	}
 
-	SHudData(const CRendElementBase* pInRE, const SShaderItem* pInShaderItem, const CShaderResources* pInShaderResources, CRenderObject* pInRO) :
+	SHudData(const CRenderElement* pInRE, const SShaderItem* pInShaderItem, const CShaderResources* pInShaderResources, CRenderObject* pInRO) :
 		pRE(pInRE),
 		pShaderItem(pInShaderItem),
 		pShaderResources(pInShaderResources),
@@ -1473,7 +1467,7 @@ public:
 	}
 
 public:
-	const CRendElementBase* pRE;
+	const CRenderElement* pRE;
 	CRenderObject*          pRO;
 	const SShaderItem*      pShaderItem; // to be removed after Alpha MS
 	const CShaderResources* pShaderResources;
@@ -1582,14 +1576,14 @@ public:
 	virtual void OnBeginFrame(const SRenderingPassInfo& passInfo);
 
 	virtual void Reset(bool bOnSpecChange = false);
-	virtual void AddRE(const CRendElementBase* re, const SShaderItem* pShaderItem, CRenderObject* pObj, const SRenderingPassInfo& passInfo);
+	virtual void AddRE(const CRenderElement* re, const SShaderItem* pShaderItem, CRenderObject* pObj, const SRenderingPassInfo& passInfo);
 	virtual void Render();
 
 	// Shared shader params/textures setup
 	void                CalculateProjMatrix();
 	void                SetShaderParams(SHudData& pData);
 	void                SetTextures(SHudData& pData);
-	void                RenderMesh(const CRendElementBase* pRE, SShaderPass* pPass);
+	void                RenderMesh(const CRenderElement* pRE, SShaderPass* pPass);
 
 	void                FlashUpdateRT();
 	void                DownsampleHud4x4(CTexture* pDstRT);
@@ -1722,7 +1716,7 @@ public:
 			pRenderObject = NULL;
 		}
 
-		const CRendElementBase* pRenderElement;
+		const CRenderElement* pRenderElement;
 		const CRenderObject*    pRenderObject;
 	};
 
@@ -1779,7 +1773,7 @@ public:
 			m_pRenderData[nThreadID].pRenderElement = NULL;
 	}
 
-	virtual void AddRE(const CRendElementBase* pRE, const SShaderItem* pShaderItem, CRenderObject* pObj, const SRenderingPassInfo& passInfo);
+	virtual void AddRE(const CRenderElement* pRE, const SShaderItem* pShaderItem, CRenderObject* pObj, const SRenderingPassInfo& passInfo);
 
 private:
 

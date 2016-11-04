@@ -957,8 +957,6 @@ add_sources("CryGameSDKDLL_uber_22.cpp"
 	SOURCE_GROUP "Utility"
 		"StatsAgentPipe.cpp"
 		"StatsAgentPipe.h"
-		"Utility/ManualFrameStep.h"
-		"Utility/ManualFrameStep.cpp"
 )
 
 add_sources("CryGameSDKDLL_uber_23.cpp"
@@ -1364,6 +1362,8 @@ add_sources("NoUberFile"
 
 end_sources()
 #END-FILE-LIST
+
+add_subdirectory(${CMAKE_SOURCE_DIR}/Code/CryPlugins/CryLobby "${CMAKE_CURRENT_BINARY_DIR}/CryLobby")
 
 CryGameModule(CryGameSDK PCH "StdAfx.cpp" SOLUTION_FOLDER "Projects/GameSDK")
 

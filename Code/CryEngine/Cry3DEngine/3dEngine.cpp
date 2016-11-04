@@ -154,9 +154,7 @@ C3DEngine::C3DEngine(ISystem* pSystem)
 
 	Cry3DEngineBase::m_nMainThreadId = CryGetCurrentThreadId();
 	Cry3DEngineBase::m_pSystem = pSystem;
-#if !defined(DEDICATED_SERVER)
 	Cry3DEngineBase::m_pRenderer = gEnv->pRenderer;
-#endif
 	Cry3DEngineBase::m_pTimer = gEnv->pTimer;
 	Cry3DEngineBase::m_pLog = gEnv->pLog;
 	Cry3DEngineBase::m_pPhysicalWorld = gEnv->pPhysicalWorld;
@@ -1993,7 +1991,7 @@ void C3DEngine::FreeRenderNodeState(IRenderNode* pEnt)
 	m_pObjManager->RemoveFromRenderAllObjectDebugInfo(pEnt);
 
 #if !defined(_RELEASE)
-	if (!gEnv->IsDedicated())
+	if (gEnv->pRenderer)
 	{
 		//As render nodes can be deleted in many places, it's possible that the map of render nodes used by stats gathering (r_stats 6, perfHUD, debug gun, Statoscope) could get aliased.
 		//Ensure that this node is removed from the map to prevent a dereference after deletion.
@@ -3917,24 +3915,6 @@ void CLightEntity::ShadowMapInfo::Release(struct IRenderer* pRenderer)
 Vec3 C3DEngine::GetTerrainSurfaceNormal(Vec3 vPos)
 {
 	return m_pTerrain ? m_pTerrain->GetTerrainSurfaceNormal(vPos, 0.5f * GetHeightMapUnitSize()) : Vec3(0.f, 0.f, 1.f);
-}
-
-IMemoryBlock* C3DEngine::Voxel_GetObjects(Vec3 vPos, float fRadius, int nSurfaceTypeId, EVoxelEditOperation eOperation, EVoxelBrushShape eShape, EVoxelEditTarget eTarget)
-{
-	return 0;
-}
-
-void C3DEngine::Voxel_Paint(Vec3 vPos, float fRadius, int nSurfaceTypeId, Vec3 vBaseColor, EVoxelEditOperation eOperation, EVoxelBrushShape eShape, EVoxelEditTarget eTarget, PodArray<IRenderNode*>* pBrushes, float fVoxelSize)
-{
-}
-
-IVoxTerrain* C3DEngine::GetIVoxTerrain()
-{
-	return 0;
-}
-
-void C3DEngine::Voxel_SetFlags(bool bPhysics, bool bSimplify, bool bShadows, bool bMaterials)
-{
 }
 
 //////////////////////////////////////////////////////////////////////////

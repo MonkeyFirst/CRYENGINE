@@ -131,7 +131,7 @@ bool CreatePipelineStates(
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 CREWaterOcean::CREWaterOcean()
-	: CRendElementBase()
+	: CRenderElement()
 	, m_pCompiledObject(new water::SCompiledWaterOcean())
 	, m_pRenderTarget(new SHRenderTarget())
 	, m_vertexBufferHandle(water::invalidBufferHandle)
@@ -184,7 +184,7 @@ void CREWaterOcean::Release(bool bForce /*= false*/)
 		m_pCompiledObject->ReleaseDeviceResources();
 	}
 
-	CRendElementBase::Release(bForce);
+	CRenderElement::Release(bForce);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -272,6 +272,7 @@ void CREWaterOcean::FrameUpdate()
 	Vec4 pCurrParams0, pCurrParams1;
 	gEnv->p3DEngine->GetOceanAnimationParams(pCurrParams0, pCurrParams1);
 
+	// TODO: this water sim is shared with CREWaterOcean and CWaterStage. the sim result also could be shared.
 	// why no comparison operator on Vec4 ??
 	if (bInitialize || pCurrParams0.x != pParams0.x || pCurrParams0.y != pParams0.y ||
 	    pCurrParams0.z != pParams0.z || pCurrParams0.w != pParams0.w || pCurrParams1.x != pParams1.x ||
@@ -669,7 +670,7 @@ void CREWaterOcean::UpdatePerInstanceCB(water::SCompiledWaterOcean& RESTRICT_REF
 
 void CREWaterOcean::UpdateVertex(water::SCompiledWaterOcean& compiledObj, int32 primType)
 {
-	CRendElementBase::SGeometryInfo geomInfo;
+	CRenderElement::SGeometryInfo geomInfo;
 	ZeroStruct(geomInfo);
 
 	{
