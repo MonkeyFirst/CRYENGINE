@@ -468,6 +468,11 @@ private:
 template<>
 inline bool DefaultInitializedForTag::Initialize<stl::variant_size<TFlowInputDataVariant>::value>(EFlowDataTypes type, TFlowInputDataVariant& var) const
 {
+	if (type == EFlowDataTypes::eFDT_Any)
+	{
+		return true;
+	}
+
 	CRY_ASSERT_MESSAGE(var.index() == stl::variant_npos, "Invalid variant index.");
 	return false;
 }
@@ -1171,6 +1176,7 @@ struct IFlowNode
 		eFE_SetEntityId,            //!< This event is send to set the entity of the FlowNode. Might also be sent in conjunction (pre) other events (like eFE_Initialize).
 		eFE_Suspend,
 		eFE_Resume,
+		eFE_EditorInputPortDataSet,
 		eFE_ConnectInputPort,
 		eFE_DisconnectInputPort,
 		eFE_ConnectOutputPort,
